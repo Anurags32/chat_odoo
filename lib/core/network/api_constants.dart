@@ -8,6 +8,11 @@ class ApiConstants {
   static const String users = '/chat/users';
   static const String createChannel = '/chat/channel';
   static const String sendMessage = '/chat/send';
+  
+  // Group endpoints
+  static const String createGroup = '/chat/group/create';
+  static const String sendGroupMessage = '/chat/group/send';
+  static const String getGroupMessages = '/chat/group/messages';
 
   // Timeouts
   static const Duration connectTimeout = Duration(seconds: 30);

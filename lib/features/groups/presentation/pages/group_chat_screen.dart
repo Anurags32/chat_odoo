@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../domain/models/group_model.dart';
-import '../../../chat/domain/models/message_model.dart';
-import '../../../chat/data/providers/chat_provider.dart';
-import '../../../chat/presentation/widgets/message_bubble.dart';
+import '../../data/providers/group_api_provider.dart';
+import '../widgets/group_message_bubble.dart';
 import '../../../chat/presentation/widgets/chat_input.dart';
 import 'view_members_screen.dart';
 
@@ -33,7 +32,7 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen>
     _animationController.forward();
 
     Future.microtask(() {
-      ref.read(chatProvider.notifier).loadMessages(widget.group.id);
+      ref.read(groupMessagesProvider.notifier).loadMessages(widget.group.channelId);
     });
   }
 
@@ -45,34 +44,43 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen>
     super.dispose();
   }
 
-  void _sendMessage() {
+  void _sendMessage() async {
     if (_messageController.text.trim().isEmpty) return;
 
-    final message = MessageModel(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      senderId: 'currentUser',
-      receiverId: widget.group.id,
-      message: _messageController.text.trim(),
-      timestamp: DateTime.now(),
-    );
-
-    ref.read(chatProvider.notifier).addMessage(message);
+    final messageText = _messageController.text.trim();
     _messageController.clear();
 
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
+    final success = await ref.read(groupMessagesProvider.notifier).sendMessage(
+      channelId: widget.group.channelId,
+      body: messageText,
+    );
+
+    if (success) {
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    } else {
+      // Show error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to send message'),
+            backgroundColor: AppColors.error,
+          ),
         );
       }
-    });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final messages = ref.watch(chatProvider);
+    final messagesState = ref.watch(groupMessagesProvider);
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -82,8 +90,12 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen>
         child: Column(
           children: [
             const SizedBox(height: 100), // Space for transparent AppBar
-            Expanded(child: _buildMessagesList(messages)),
-            ChatInput(controller: _messageController, onSend: _sendMessage),
+            Expanded(child: _buildMessagesList(messagesState)),
+            ChatInput(
+              controller: _messageController,
+              onSend: _sendMessage,
+              enabled: !messagesState.isSending,
+            ),
           ],
         ),
       ),
@@ -109,7 +121,7 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen>
             ),
             child: Center(
               child: Text(
-                widget.group.avatar,
+                widget.group.avatar ?? '👥',
                 style: const TextStyle(fontSize: 20),
               ),
             ),
@@ -196,8 +208,40 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen>
     );
   }
 
-  Widget _buildMessagesList(List<MessageModel> messages) {
-    if (messages.isEmpty) {
+  Widget _buildMessagesList(GroupMessagesState messagesState) {
+    if (messagesState.isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(AppColors.purple1),
+        ),
+      );
+    }
+
+    if (messagesState.error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 60, color: AppColors.error),
+            const SizedBox(height: 16),
+            Text(
+              messagesState.error!,
+              style: const TextStyle(color: AppColors.error),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () {
+                ref.read(groupMessagesProvider.notifier).loadMessages(widget.group.channelId);
+              },
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (messagesState.messages.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -236,16 +280,15 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen>
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.all(16),
-      itemCount: messages.length,
+      itemCount: messagesState.messages.length,
       itemBuilder: (context, index) {
-        final message = messages[index];
-        final isMe = message.senderId == 'currentUser';
+        final message = messagesState.messages[index];
 
         return FadeTransition(
           opacity: Tween<double>(begin: 0.0, end: 1.0).animate(
             CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
           ),
-          child: MessageBubble(message: message, isMe: isMe),
+          child: GroupMessageBubble(message: message),
         );
       },
     );
@@ -257,7 +300,7 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen>
       builder: (context) => AlertDialog(
         title: Row(
           children: [
-            Text(widget.group.avatar, style: const TextStyle(fontSize: 32)),
+            Text(widget.group.avatar ?? '👥', style: const TextStyle(fontSize: 32)),
             const SizedBox(width: 12),
             Expanded(child: Text(widget.group.name)),
           ],
@@ -266,13 +309,14 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              widget.group.description,
-              style: const TextStyle(fontSize: 14),
-            ),
+            if (widget.group.description != null)
+              Text(
+                widget.group.description!,
+                style: const TextStyle(fontSize: 14),
+              ),
             const SizedBox(height: 16),
             Text(
-              'Created: ${_formatDate(widget.group.createdAt)}',
+              'Created: ${_formatDate(DateTime.now())}',
               style: const TextStyle(fontSize: 12, color: AppColors.grey),
             ),
             const SizedBox(height: 8),

@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/router/app_router.dart';
 import '../../../../core/widgets/user_avatar_widget.dart';
 import '../../data/providers/auth_api_provider.dart';
 import '../../domain/models/api_user_model.dart';
 import '../../../chat/presentation/pages/real_chat_screen.dart';
+import '../../../groups/data/providers/group_api_provider.dart';
+import '../../../groups/domain/models/group_model.dart';
+import '../../../groups/presentation/widgets/create_group_dialog.dart';
 
 class ApiUsersScreen extends ConsumerStatefulWidget {
   const ApiUsersScreen({super.key});
@@ -15,8 +19,9 @@ class ApiUsersScreen extends ConsumerStatefulWidget {
 }
 
 class _ApiUsersScreenState extends ConsumerState<ApiUsersScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late AnimationController _animationController;
+  late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
@@ -27,7 +32,18 @@ class _ApiUsersScreenState extends ConsumerState<ApiUsersScreen>
       duration: const Duration(milliseconds: 300),
       vsync: this,
     );
+    _tabController = TabController(length: 2, vsync: this);
     _animationController.forward();
+
+    // Reset search when tab changes
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging) {
+        setState(() {
+          _searchController.clear();
+          _searchQuery = '';
+        });
+      }
+    });
 
     // Fetch users on init
     Future.microtask(() {
@@ -38,6 +54,7 @@ class _ApiUsersScreenState extends ConsumerState<ApiUsersScreen>
   @override
   void dispose() {
     _animationController.dispose();
+    _tabController.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -73,19 +90,23 @@ class _ApiUsersScreenState extends ConsumerState<ApiUsersScreen>
         child: Column(
           children: [
             const SizedBox(height: 100),
+            _buildTabBar(),
             _buildSearchBar(),
-            _buildUserCount(filteredUsers.length),
             Expanded(
-              child: usersState.isLoading
-                  ? _buildLoadingState()
-                  : filteredUsers.isEmpty
-                  ? _buildEmptyState()
-                  : _buildUsersList(filteredUsers),
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildUsersTab(usersState, filteredUsers),
+                  _buildGroupsTab(),
+                ],
+              ),
             ),
           ],
         ),
       ),
-      floatingActionButton: _buildRefreshButton(),
+      floatingActionButton: _tabController.index == 1 
+          ? _buildCreateGroupButton() 
+          : _buildRefreshButton(),
     );
   }
 
@@ -114,6 +135,42 @@ class _ApiUsersScreenState extends ConsumerState<ApiUsersScreen>
     );
   }
 
+  Widget _buildTabBar() {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        gradient: AppColors.buttonGradient,
+        borderRadius: BorderRadius.circular(30),
+      ),
+      child: TabBar(
+        controller: _tabController,
+        indicator: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(26),
+        ),
+        indicatorSize: TabBarIndicatorSize.tab,
+        dividerColor: Colors.transparent,
+        labelColor: AppColors.purple1,
+        unselectedLabelColor: AppColors.white,
+        labelStyle: const TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w600,
+        ),
+        tabs: const [
+          Tab(
+            icon: Icon(Icons.person, size: 20),
+            text: 'Users',
+          ),
+          Tab(
+            icon: Icon(Icons.group, size: 20),
+            text: 'Groups',
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSearchBar() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -126,7 +183,7 @@ class _ApiUsersScreenState extends ConsumerState<ApiUsersScreen>
           });
         },
         decoration: InputDecoration(
-          hintText: 'Search users...',
+          hintText: _tabController.index == 0 ? 'Search users...' : 'Search groups...',
           prefixIcon: const Icon(Icons.search, color: AppColors.purple1),
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
@@ -225,6 +282,156 @@ class _ApiUsersScreenState extends ConsumerState<ApiUsersScreen>
             style: TextStyle(fontSize: 14, color: AppColors.grey),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildUsersTab(UsersState usersState, List<ApiUserModel> filteredUsers) {
+    if (usersState.isLoading) {
+      return _buildLoadingState();
+    }
+    
+    if (filteredUsers.isEmpty) {
+      return _buildEmptyState();
+    }
+    
+    return Column(
+      children: [
+        _buildUserCount(filteredUsers.length),
+        Expanded(child: _buildUsersList(filteredUsers)),
+      ],
+    );
+  }
+
+  Widget _buildGroupsTab() {
+    final groupState = ref.watch(groupApiProvider);
+    final groups = groupState.groups;
+    final filteredGroups = groups.where((group) {
+      return group.name.toLowerCase().contains(_searchQuery.toLowerCase());
+    }).toList();
+
+    if (groupState.isLoading) {
+      return _buildLoadingState();
+    }
+
+    if (filteredGroups.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: AppColors.purple1.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.group_off,
+                size: 60,
+                color: AppColors.purple1,
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'No groups found',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: AppColors.darkGrey,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Create your first group!',
+              style: TextStyle(fontSize: 14, color: AppColors.grey),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return _buildGroupsList(filteredGroups);
+  }
+
+  Widget _buildGroupsList(List<GroupModel> groups) {
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      itemCount: groups.length,
+      itemBuilder: (context, index) {
+        final group = groups[index];
+        return _buildGroupCard(group);
+      },
+    );
+  }
+
+  Widget _buildGroupCard(GroupModel group) {
+    return InkWell(
+      onTap: () {
+        context.push(AppRouter.groupChat, extra: group);
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          gradient: AppColors.buttonGradient,
+        ),
+        child: Container(
+          margin: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            color: AppColors.white.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: AppColors.buttonGradient,
+                  ),
+                  child: Center(
+                    child: Text(
+                      group.avatar ?? '👥',
+                      style: const TextStyle(fontSize: 28),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        group.name,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${group.memberCount} members',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: AppColors.white.withValues(alpha: 0.8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(
+                  Icons.arrow_forward_ios,
+                  color: AppColors.white,
+                  size: 16,
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -407,6 +614,32 @@ class _ApiUsersScreenState extends ConsumerState<ApiUsersScreen>
       },
       backgroundColor: AppColors.purple1,
       child: const Icon(Icons.refresh, color: AppColors.white),
+    );
+  }
+
+  Widget _buildCreateGroupButton() {
+    return FloatingActionButton(
+      onPressed: () {
+        showDialog(
+          context: context,
+          builder: (context) => const CreateGroupDialog(),
+        );
+      },
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      child: Container(
+        width: 56,
+        height: 56,
+        decoration: const BoxDecoration(
+          gradient: AppColors.buttonGradient,
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(
+          Icons.add,
+          color: AppColors.white,
+          size: 28,
+        ),
+      ),
     );
   }
 

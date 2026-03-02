@@ -4,8 +4,14 @@ import '../../../../core/theme/app_colors.dart';
 class ChatInput extends StatefulWidget {
   final TextEditingController controller;
   final VoidCallback onSend;
+  final bool enabled;
 
-  const ChatInput({super.key, required this.controller, required this.onSend});
+  const ChatInput({
+    super.key,
+    required this.controller,
+    required this.onSend,
+    this.enabled = true,
+  });
 
   @override
   State<ChatInput> createState() => _ChatInputState();
@@ -82,6 +88,7 @@ class _ChatInputState extends State<ChatInput> {
                 ),
                 child: TextField(
                   controller: widget.controller,
+                  enabled: widget.enabled,
                   decoration: const InputDecoration(
                     hintText: 'Type a message...',
                     border: InputBorder.none,
@@ -104,11 +111,12 @@ class _ChatInputState extends State<ChatInput> {
               duration: const Duration(milliseconds: 200),
               child: _hasText
                   ? GestureDetector(
-                      onTap: widget.onSend,
+                      onTap: widget.enabled ? widget.onSend : null,
                       child: Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          gradient: AppColors.buttonGradient,
+                          gradient: widget.enabled ? AppColors.buttonGradient : null,
+                          color: widget.enabled ? null : AppColors.grey,
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(

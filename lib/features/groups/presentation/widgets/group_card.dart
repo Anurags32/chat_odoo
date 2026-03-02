@@ -42,7 +42,7 @@ class GroupCard extends StatelessWidget {
         // gradient: AppColors.buttonGradient,
       ),
       child: Center(
-        child: Text(group.avatar, style: const TextStyle(fontSize: 28)),
+        child: Text(group.avatar ?? '👥', style: const TextStyle(fontSize: 28)),
       ),
     );
   }

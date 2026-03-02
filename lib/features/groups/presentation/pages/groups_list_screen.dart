@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/router/app_router.dart';
 import '../../domain/models/group_model.dart';
-import '../../data/providers/groups_provider.dart';
+import '../../data/providers/group_api_provider.dart';
 import '../widgets/group_card.dart';
 import '../widgets/create_group_dialog.dart';
 
@@ -40,7 +40,8 @@ class _GroupsListScreenState extends ConsumerState<GroupsListScreen>
 
   @override
   Widget build(BuildContext context) {
-    final groups = ref.watch(groupsProvider);
+    final groupState = ref.watch(groupApiProvider);
+    final groups = groupState.groups;
     final filteredGroups = groups.where((group) {
       return group.name.toLowerCase().contains(_searchQuery.toLowerCase());
     }).toList();
@@ -224,28 +225,7 @@ class _GroupsListScreenState extends ConsumerState<GroupsListScreen>
   void _showCreateGroupDialog() {
     showDialog(
       context: context,
-      builder: (context) => CreateGroupDialog(
-        onCreateGroup: (name, description, avatar, memberIds) {
-          final newGroup = GroupModel(
-            id: 'g${DateTime.now().millisecondsSinceEpoch}',
-            name: name,
-            description: description,
-            avatar: avatar,
-            memberIds: memberIds,
-            createdBy: 'currentUser',
-            createdAt: DateTime.now(),
-          );
-          ref.read(groupsProvider.notifier).createGroup(newGroup);
-          Navigator.of(context).pop();
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Group "$name" created successfully!'),
-              backgroundColor: AppColors.success,
-            ),
-          );
-        },
-      ),
+      builder: (context) => const CreateGroupDialog(),
     );
   }
 }

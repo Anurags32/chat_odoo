@@ -7,7 +7,7 @@ import '../../../chat/domain/models/user_model.dart';
 import '../../data/providers/users_provider.dart';
 import '../widgets/user_card.dart';
 import '../../../groups/domain/models/group_model.dart';
-import '../../../groups/data/providers/groups_provider.dart';
+import '../../../groups/data/providers/group_api_provider.dart';
 import '../../../groups/presentation/widgets/group_card.dart';
 import '../../../groups/presentation/widgets/create_group_dialog.dart';
 
@@ -148,6 +148,7 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen>
           children: [
             const SizedBox(height: 100), // Space for transparent AppBar
             _buildStylishTabBar(),
+            _buildSearchBar(),
             Expanded(
               child: TabBarView(
                 controller: _tabController,
@@ -166,44 +167,29 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen>
   Widget _buildStylishTabBar() {
     return Container(
       margin: const EdgeInsets.all(16),
-      height: 50,
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: AppColors.offWhite,
-        borderRadius: BorderRadius.circular(25),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        gradient: AppColors.buttonGradient,
+        borderRadius: BorderRadius.circular(30),
       ),
       child: TabBar(
         controller: _tabController,
         indicator: BoxDecoration(
-          gradient: AppColors.buttonGradient,
-          borderRadius: BorderRadius.circular(25),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.purple1.withValues(alpha: 0.3),
-              blurRadius: 8,
-              spreadRadius: 1,
-            ),
-          ],
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(26),
         ),
-        labelColor: AppColors.white,
-        unselectedLabelColor: AppColors.darkGrey,
+        indicatorSize: TabBarIndicatorSize.tab,
+        dividerColor: Colors.transparent,
+        labelColor: AppColors.purple1,
+        unselectedLabelColor: AppColors.white,
         labelStyle: const TextStyle(
           fontSize: 15,
-          fontWeight: FontWeight.bold,
-          letterSpacing: 0.5,
+          fontWeight: FontWeight.w600,
         ),
         unselectedLabelStyle: const TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w600,
         ),
-        indicatorSize: TabBarIndicatorSize.tab,
-        dividerColor: Colors.transparent,
         splashBorderRadius: BorderRadius.circular(25),
         tabs: [
           Tab(
@@ -234,7 +220,6 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen>
   Widget _buildUsersTab(List<UserModel> users, List<UserModel> filteredUsers) {
     return Column(
       children: [
-        _buildSearchBar(),
         _buildOnlineUsersSection(users),
         Expanded(child: _buildUsersList(filteredUsers)),
       ],
@@ -242,53 +227,13 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen>
   }
 
   Widget _buildGroupsTab() {
-    final groups = ref.watch(groupsProvider);
+    final groupState = ref.watch(groupApiProvider);
+    final groups = groupState.groups;
     final filteredGroups = groups.where((group) {
       return group.name.toLowerCase().contains(_searchQuery.toLowerCase());
     }).toList();
 
-    return Column(
-      children: [
-        _buildGroupSearchBar(),
-        Expanded(child: _buildGroupsList(filteredGroups)),
-      ],
-    );
-  }
-
-  Widget _buildGroupSearchBar() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      color: AppColors.white,
-      child: TextField(
-        controller: _searchController,
-        onChanged: (value) {
-          setState(() {
-            _searchQuery = value;
-          });
-        },
-        decoration: InputDecoration(
-          hintText: 'Search groups...',
-          prefixIcon: const Icon(Icons.search, color: AppColors.grey),
-          suffixIcon: _searchQuery.isNotEmpty
-              ? IconButton(
-                  icon: const Icon(Icons.clear, color: AppColors.grey),
-                  onPressed: () {
-                    setState(() {
-                      _searchController.clear();
-                      _searchQuery = '';
-                    });
-                  },
-                )
-              : null,
-          filled: true,
-          fillColor: AppColors.offWhite,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(25),
-            borderSide: BorderSide.none,
-          ),
-        ),
-      ),
-    );
+    return _buildGroupsList(filteredGroups);
   }
 
   Widget _buildGroupsList(List<GroupModel> groups) {
@@ -440,28 +385,7 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen>
   void _showCreateGroupDialog() {
     showDialog(
       context: context,
-      builder: (context) => CreateGroupDialog(
-        onCreateGroup: (name, description, avatar, memberIds) {
-          final newGroup = GroupModel(
-            id: 'g${DateTime.now().millisecondsSinceEpoch}',
-            name: name,
-            description: description,
-            avatar: avatar,
-            memberIds: memberIds,
-            createdBy: 'currentUser',
-            createdAt: DateTime.now(),
-          );
-          ref.read(groupsProvider.notifier).createGroup(newGroup);
-          Navigator.of(context).pop();
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Group "$name" created successfully!'),
-              backgroundColor: AppColors.success,
-            ),
-          );
-        },
-      ),
+      builder: (context) => const CreateGroupDialog(),
     );
   }
 
@@ -477,7 +401,7 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen>
           });
         },
         decoration: InputDecoration(
-          hintText: 'Search users...',
+          hintText: _tabController.index == 0 ? 'Search users...' : 'Search groups...',
           prefixIcon: const Icon(Icons.search, color: AppColors.grey),
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
@@ -501,6 +425,41 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen>
     );
   }
 
+ Widget _buildTabBar() {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        gradient: AppColors.buttonGradient,
+        borderRadius: BorderRadius.circular(30),
+      ),
+      child: TabBar(
+        controller: _tabController,
+        indicator: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(26),
+        ),
+        indicatorSize: TabBarIndicatorSize.tab,
+        dividerColor: Colors.transparent,
+        labelColor: AppColors.purple1,
+        unselectedLabelColor: AppColors.white,
+        labelStyle: const TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w600,
+        ),
+        tabs: const [
+          Tab(
+            icon: Icon(Icons.person, size: 20),
+            text: 'Users',
+          ),
+          Tab(
+            icon: Icon(Icons.group, size: 20),
+            text: 'Groups',
+          ),
+        ],
+      ),
+    );
+  }
   Widget _buildOnlineUsersSection(List<UserModel> users) {
     final onlineUsers = users.where((user) => user.isOnline).toList();
 
