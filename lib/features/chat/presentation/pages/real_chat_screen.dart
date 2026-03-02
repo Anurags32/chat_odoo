@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/user_avatar_widget.dart';
 import '../../../auth/domain/models/api_user_model.dart';
 import '../../data/providers/chat_api_provider.dart';
 import '../../domain/models/channel_model.dart';
@@ -127,21 +128,10 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
                           colors: [AppColors.grey, AppColors.lightGrey],
                         ),
                 ),
-                child: ClipOval(
-                  child: Image.network(
-                    'http://192.168.29.231:8030${widget.user.avatarUrl}',
-                    width: 40,
-                    height: 40,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Center(
-                        child: Text(
-                          widget.user.name[0].toUpperCase(),
-                          style: const TextStyle(fontSize: 20),
-                        ),
-                      );
-                    },
-                  ),
+                child: UserAvatarWidget(
+                  user: widget.user,
+                  radius: 20,
+                  showOnlineIndicator: false,
                 ),
               ),
               if (widget.user.isOnline)
@@ -283,21 +273,10 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
                 shape: BoxShape.circle,
                 gradient: AppColors.buttonGradient,
               ),
-              child: ClipOval(
-                child: Image.network(
-                  'http://192.168.29.231:8030${widget.user.avatarUrl}',
-                  width: 32,
-                  height: 32,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Center(
-                      child: Text(
-                        widget.user.name[0].toUpperCase(),
-                        style: const TextStyle(fontSize: 14),
-                      ),
-                    );
-                  },
-                ),
+              child: UserAvatarWidget(
+                user: widget.user,
+                radius: 16,
+                showOnlineIndicator: false,
               ),
             ),
             const SizedBox(width: 8),

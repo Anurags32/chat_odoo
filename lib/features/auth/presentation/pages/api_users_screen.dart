@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/user_avatar_widget.dart';
 import '../../data/providers/auth_api_provider.dart';
 import '../../domain/models/api_user_model.dart';
 import '../../../chat/presentation/pages/real_chat_screen.dart';
@@ -291,38 +292,10 @@ class _ApiUsersScreenState extends ConsumerState<ApiUsersScreen>
                             colors: [AppColors.grey, AppColors.lightGrey],
                           ),
                   ),
-                  child: ClipOval(
-                    child: Image.network(
-                      'http://192.168.29.231:8030${user.avatarUrl}',
-                      width: 56,
-                      height: 56,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Center(
-                          child: Text(
-                            user.name[0].toUpperCase(),
-                            style: const TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.white,
-                            ),
-                          ),
-                        );
-                      },
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return Center(
-                          child: Text(
-                            user.name[0].toUpperCase(),
-                            style: const TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.white,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                  child: UserAvatarWidget(
+                    user: user,
+                    radius: 28,
+                    showOnlineIndicator: false,
                   ),
                 ),
                 const SizedBox(width: 16),

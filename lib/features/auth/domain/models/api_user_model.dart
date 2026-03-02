@@ -3,7 +3,7 @@ class ApiUserModel {
   final String name;
   final String email;
   final int partnerId;
-  final String avatarUrl;
+  final String? avatar; // Base64 encoded image string
   final String imStatus;
 
   ApiUserModel({
@@ -11,7 +11,7 @@ class ApiUserModel {
     required this.name,
     required this.email,
     required this.partnerId,
-    required this.avatarUrl,
+    this.avatar,
     required this.imStatus,
   });
 
@@ -21,7 +21,7 @@ class ApiUserModel {
       name: json['name'] as String,
       email: json['email'] as String,
       partnerId: json['partner_id'] as int,
-      avatarUrl: json['avatar_url'] as String,
+      avatar: json['avatar'] as String?,
       imStatus: json['im_status'] as String,
     );
   }
@@ -32,13 +32,14 @@ class ApiUserModel {
       'name': name,
       'email': email,
       'partner_id': partnerId,
-      'avatar_url': avatarUrl,
+      'avatar': avatar,
       'im_status': imStatus,
     };
   }
 
   bool get isOnline => imStatus == 'online';
   bool get isActive => imStatus != 'offline';
+  bool get hasAvatar => avatar != null && avatar!.isNotEmpty;
 }
 
 class UsersResponse {
