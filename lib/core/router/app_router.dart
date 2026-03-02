@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../features/splash/presentation/pages/splash_screen.dart';
 import '../../features/auth/presentation/pages/login_screen.dart';
+import '../../features/auth/presentation/pages/api_users_screen.dart';
 import '../../features/users/presentation/pages/users_list_screen.dart';
 import '../../features/chat/presentation/pages/chat_screen.dart';
 import '../../features/chat/domain/models/user_model.dart';
@@ -12,6 +13,7 @@ import '../../features/groups/domain/models/group_model.dart';
 class AppRouter {
   static const String splash = '/';
   static const String login = '/login';
+  static const String apiUsers = '/api-users';
   static const String usersList = '/users';
   static const String chat = '/chat';
   static const String groupsList = '/groups';
@@ -37,6 +39,26 @@ class AppRouter {
           child: const LoginScreen(),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             return FadeTransition(opacity: animation, child: child);
+          },
+        ),
+      ),
+      GoRoute(
+        path: apiUsers,
+        pageBuilder: (context, state) => CustomTransitionPage(
+          key: state.pageKey,
+          child: const ApiUsersScreen(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            const begin = Offset(1.0, 0.0);
+            const end = Offset.zero;
+            const curve = Curves.easeInOut;
+            var tween = Tween(
+              begin: begin,
+              end: end,
+            ).chain(CurveTween(curve: curve));
+            return SlideTransition(
+              position: animation.drive(tween),
+              child: child,
+            );
           },
         ),
       ),

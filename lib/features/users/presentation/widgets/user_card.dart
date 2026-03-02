@@ -10,22 +10,31 @@ class UserCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: InkWell(
-        onTap: onTap,
+      decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              _buildAvatar(),
-              const SizedBox(width: 12),
-              Expanded(child: _buildUserInfo()),
-              _buildTrailingIcon(),
-            ],
+        gradient: AppColors.buttonGradient,
+      ),
+      child: Container(
+        margin: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                _buildAvatar(),
+                const SizedBox(width: 12),
+                Expanded(child: _buildUserInfo()),
+                _buildTrailingIcon(),
+              ],
+            ),
           ),
         ),
       ),

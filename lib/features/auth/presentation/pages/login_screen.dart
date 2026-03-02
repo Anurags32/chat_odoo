@@ -1,22 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/router/app_router.dart';
+import '../../data/providers/auth_api_provider.dart';
 
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen>
+class _LoginScreenState extends ConsumerState<LoginScreen>
     with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
+  final _loginController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
-  bool _isLoading = false;
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
@@ -44,13 +45,37 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   void dispose() {
     _animationController.dispose();
-    _emailController.dispose();
+    _loginController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final authState = ref.watch(authProvider);
+
+    // Listen to auth state changes
+    ref.listen<AuthState>(authProvider, (previous, next) {
+      if (next.error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(next.error!),
+            backgroundColor: AppColors.error,
+          ),
+        );
+        ref.read(authProvider.notifier).clearError();
+      }
+
+      if (next.isAuthenticated && next.loginData != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Welcome ${next.loginData!.userName}!'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        context.go(AppRouter.apiUsers);
+      }
+    });
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
@@ -67,7 +92,7 @@ class _LoginScreenState extends State<LoginScreen>
                     children: [
                       _buildLogo(),
                       const SizedBox(height: 40),
-                      _buildLoginCard(),
+                      _buildLoginCard(authState),
                     ],
                   ),
                 ),
@@ -118,7 +143,7 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  Widget _buildLoginCard() {
+  Widget _buildLoginCard(AuthState authState) {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -154,15 +179,15 @@ class _LoginScreenState extends State<LoginScreen>
             ),
             const SizedBox(height: 32),
 
-            // Email Field
+            // Login Field
             TextFormField(
-              controller: _emailController,
-              keyboardType: TextInputType.emailAddress,
+              controller: _loginController,
+              keyboardType: TextInputType.text,
               decoration: InputDecoration(
-                labelText: 'Email',
-                hintText: 'Enter your email',
+                labelText: 'Login',
+                hintText: 'Enter your login',
                 prefixIcon: const Icon(
-                  Icons.email_outlined,
+                  Icons.person_outline,
                   color: AppColors.purple1,
                 ),
                 border: OutlineInputBorder(
@@ -178,10 +203,7 @@ class _LoginScreenState extends State<LoginScreen>
               ),
               validator: (value) {
                 if (value == null || value.trim().isEmpty) {
-                  return 'Please enter your email';
-                }
-                if (!value.contains('@')) {
-                  return 'Please enter a valid email';
+                  return 'Please enter your login';
                 }
                 return null;
               },
@@ -227,9 +249,6 @@ class _LoginScreenState extends State<LoginScreen>
                 if (value == null || value.trim().isEmpty) {
                   return 'Please enter your password';
                 }
-                if (value.length < 6) {
-                  return 'Password must be at least 6 characters';
-                }
                 return null;
               },
             ),
@@ -266,10 +285,10 @@ class _LoginScreenState extends State<LoginScreen>
               child: Material(
                 color: Colors.transparent,
                 child: InkWell(
-                  onTap: _isLoading ? null : _handleLogin,
+                  onTap: authState.isLoading ? null : _handleLogin,
                   borderRadius: BorderRadius.circular(12),
                   child: Center(
-                    child: _isLoading
+                    child: authState.isLoading
                         ? const SizedBox(
                             height: 20,
                             width: 20,
@@ -416,21 +435,9 @@ class _LoginScreenState extends State<LoginScreen>
 
   void _handleLogin() async {
     if (_formKey.currentState!.validate()) {
-      setState(() {
-        _isLoading = true;
-      });
-
-      // Simulate API call
-      await Future.delayed(const Duration(seconds: 2));
-
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-
-        // Navigate to users list
-        context.go(AppRouter.usersList);
-      }
+      await ref
+          .read(authProvider.notifier)
+          .login(_loginController.text.trim(), _passwordController.text.trim());
     }
   }
 }
