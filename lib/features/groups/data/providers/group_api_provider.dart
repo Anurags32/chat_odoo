@@ -133,6 +133,27 @@ class GroupNotifier extends StateNotifier<GroupState> {
       }).toList(),
     );
   }
+
+  Future<bool> leaveGroup(int channelId) async {
+    state = state.copyWith(isLoading: true, error: null);
+
+    final response = await _groupApiService.leaveGroup(channelId: channelId);
+
+    if (response.success) {
+      // Remove the group from the list
+      state = state.copyWith(
+        groups: state.groups.where((group) => group.channelId != channelId).toList(),
+        isLoading: false,
+      );
+      return true;
+    } else {
+      state = state.copyWith(
+        isLoading: false,
+        error: response.message,
+      );
+      return false;
+    }
+  }
 }
 
 // Group Messages Notifier

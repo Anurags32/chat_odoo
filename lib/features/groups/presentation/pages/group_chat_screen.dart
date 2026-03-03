@@ -355,15 +355,34 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen>
             child: Material(
               color: Colors.transparent,
               child: InkWell(
-                onTap: () {
-                  Navigator.of(context).pop();
-                  Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('You left the group'),
-                      backgroundColor: AppColors.error,
+                onTap: () async {
+                  Navigator.of(context).pop(); // Close dialog
+                  
+                  // Show loading
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (context) => const Center(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(AppColors.purple1),
+                      ),
                     ),
                   );
+
+                  // Call leave group API
+                  final success = await ref.read(groupApiProvider.notifier).leaveGroup(widget.group.channelId);
+
+                  if (mounted) {
+                    Navigator.of(context).pop(); // Close loading
+                    Navigator.of(context).pop(); // Close chat screen
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(success ? 'You left the group' : 'Failed to leave group'),
+                        backgroundColor: success ? AppColors.purple1 : AppColors.error,
+                      ),
+                    );
+                  }
                 },
                 borderRadius: BorderRadius.circular(12),
                 child: const Padding(

@@ -158,4 +158,40 @@ class GroupApiService {
       return ApiResponse.error('An unexpected error occurred');
     }
   }
+
+  // Leave Group
+  Future<ApiResponse<LeaveGroupResponse>> leaveGroup({
+    required int channelId,
+  }) async {
+    try {
+      final response = await _dioClient.post(
+        ApiConstants.leaveGroup,
+        data: {
+          'channel_id': channelId,
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final leaveResponse = LeaveGroupResponse.fromJson(response.data);
+
+        return ApiResponse.success(
+          leaveResponse,
+          message: leaveResponse.message,
+          statusCode: response.statusCode,
+        );
+      } else {
+        return ApiResponse.error(
+          'Failed to leave group',
+          statusCode: response.statusCode,
+        );
+      }
+    } on DioException catch (e) {
+      return ApiResponse.error(
+        e.response?.data['message'] ?? 'Network error occurred',
+        statusCode: e.response?.statusCode,
+      );
+    } catch (e) {
+      return ApiResponse.error('An unexpected error occurred');
+    }
+  }
 }

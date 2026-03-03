@@ -209,3 +209,23 @@ class GetGroupMessagesResponse {
     );
   }
 }
+
+class LeaveGroupResponse {
+  final bool success;
+  final String message;
+  final int remainingMembers;
+
+  LeaveGroupResponse({
+    required this.success,
+    required this.message,
+    required this.remainingMembers,
+  });
+
+  factory LeaveGroupResponse.fromJson(Map<String, dynamic> json) {
+    return LeaveGroupResponse(
+      success: json['success'] as bool,
+      message: json['message'] as String,
+      remainingMembers: json['remaining_members'] as int,
+    );
+  }
+}

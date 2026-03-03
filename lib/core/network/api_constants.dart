@@ -14,6 +14,7 @@ class ApiConstants {
   static const String sendGroupMessage = '/chat/group/send';
   static const String getGroupMessages = '/chat/group/messages';
   static const String getAllGroups = '/chat/groups';
+  static const String leaveGroup = '/chat/group/leave';
 
   // Timeouts
   static const Duration connectTimeout = Duration(seconds: 30);
