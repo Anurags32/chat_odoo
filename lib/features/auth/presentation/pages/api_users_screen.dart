@@ -116,18 +116,21 @@ class _ApiUsersScreenState extends ConsumerState<ApiUsersScreen>
   }
 
   PreferredSizeWidget _buildAppBar(AuthState authState) {
+    String capitalizeFirst(String text) {
+  if (text.isEmpty) return '';
+  return text[0].toUpperCase() + text.substring(1);
+}
     return AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('API Users'),
+          // const Text('API Users'),
           if (authState.loginData != null)
-            Text(
-              authState.loginData!.userName,
-              style: const TextStyle(fontSize: 12, color: AppColors.grey),
-            ),
+         Text(
+  capitalizeFirst(authState.loginData!.userName ?? ''),
+),
         ],
       ),
       actions: [

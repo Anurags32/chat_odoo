@@ -65,7 +65,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     }
   }
 
-  Future<void> sendMessage(String body) async {
+  Future<void> sendMessage(String body, {List<MessageAttachment>? attachments}) async {
     if (state.channel == null) {
       state = state.copyWith(error: 'No channel selected');
       return;
@@ -76,17 +76,25 @@ class ChatNotifier extends StateNotifier<ChatState> {
     final response = await _chatApiService.sendMessage(
       channelId: state.channel!.id,
       body: body,
+      attachments: attachments,
     );
 
     if (response.success && response.data != null) {
-      // Add new message to the list
-      final updatedMessages = [...state.messages, response.data!.message];
-      
-      state = state.copyWith(
-        isSending: false,
-        messages: updatedMessages,
-        error: null,
-      );
+      // If message object is returned, add it to the list
+      if (response.data!.message != null) {
+        final updatedMessages = [...state.messages, response.data!.message!];
+        state = state.copyWith(
+          isSending: false,
+          messages: updatedMessages,
+          error: null,
+        );
+      } else {
+        // Just mark as sent successfully
+        state = state.copyWith(
+          isSending: false,
+          error: null,
+        );
+      }
     } else {
       state = state.copyWith(
         isSending: false,

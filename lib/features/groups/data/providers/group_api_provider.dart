@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/group_api_service.dart';
 import '../../domain/models/group_model.dart';
+import '../../../chat/domain/models/channel_model.dart';
 
 final groupApiServiceProvider = Provider<GroupApiService>((ref) {
   return GroupApiService();
@@ -167,12 +168,14 @@ class GroupMessagesNotifier extends StateNotifier<GroupMessagesState> {
   Future<bool> sendMessage({
     required int channelId,
     required String body,
+    List<MessageAttachment>? attachments,
   }) async {
     state = state.copyWith(isSending: true, error: null);
 
     final response = await _groupApiService.sendGroupMessage(
       channelId: channelId,
       body: body,
+      attachments: attachments,
     );
 
     if (response.success) {

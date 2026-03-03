@@ -111,6 +111,34 @@ class MessageAuthor {
   }
 }
 
+class MessageAttachment {
+  final String filename;
+  final String mimetype;
+  final String data; // Base64 encoded file data
+
+  MessageAttachment({
+    required this.filename,
+    required this.mimetype,
+    required this.data,
+  });
+
+  factory MessageAttachment.fromJson(Map<String, dynamic> json) {
+    return MessageAttachment(
+      filename: json['filename'] as String,
+      mimetype: json['mimetype'] as String,
+      data: json['data'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'filename': filename,
+      'mimetype': mimetype,
+      'data': data,
+    };
+  }
+}
+
 class ChannelResponse {
   final bool success;
   final ChannelModel channel;
@@ -130,17 +158,25 @@ class ChannelResponse {
 
 class SendMessageResponse {
   final bool success;
-  final ChatMessageModel message;
+  final int messageId;
+  final int attachmentCount;
+  final ChatMessageModel? message;
 
   SendMessageResponse({
     required this.success,
-    required this.message,
+    required this.messageId,
+    required this.attachmentCount,
+    this.message,
   });
 
   factory SendMessageResponse.fromJson(Map<String, dynamic> json) {
     return SendMessageResponse(
       success: json['success'] as bool,
-      message: ChatMessageModel.fromJson(json['message'] as Map<String, dynamic>),
+      messageId: json['message_id'] as int,
+      attachmentCount: json['attachment_count'] as int,
+      message: json['message'] != null
+          ? ChatMessageModel.fromJson(json['message'] as Map<String, dynamic>)
+          : null,
     );
   }
 }

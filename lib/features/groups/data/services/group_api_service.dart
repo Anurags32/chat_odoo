@@ -3,6 +3,7 @@ import '../../../../core/network/dio_client.dart';
 import '../../../../core/network/api_constants.dart';
 import '../../../../core/network/api_response.dart';
 import '../../domain/models/group_model.dart';
+import '../../../chat/domain/models/channel_model.dart';
 
 class GroupApiService {
   final DioClient _dioClient = DioClient.instance;
@@ -80,14 +81,22 @@ class GroupApiService {
   Future<ApiResponse<SendGroupMessageResponse>> sendGroupMessage({
     required int channelId,
     required String body,
+    List<MessageAttachment>? attachments,
   }) async {
     try {
+      final data = {
+        'channel_id': channelId,
+        'body': body,
+      };
+
+      // Add attachments if provided
+      if (attachments != null && attachments.isNotEmpty) {
+        data['attachments'] = attachments.map((a) => a.toJson()).toList();
+      }
+
       final response = await _dioClient.post(
         ApiConstants.sendGroupMessage,
-        data: {
-          'channel_id': channelId,
-          'body': body,
-        },
+        data: data,
       );
 
       if (response.statusCode == 200) {

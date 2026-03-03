@@ -47,14 +47,22 @@ class ChatApiService {
   Future<ApiResponse<SendMessageResponse>> sendMessage({
     required int channelId,
     required String body,
+    List<MessageAttachment>? attachments,
   }) async {
     try {
+      final data = {
+        'channel_id': channelId,
+        'body': body,
+      };
+
+      // Add attachments if provided
+      if (attachments != null && attachments.isNotEmpty) {
+        data['attachments'] = attachments.map((a) => a.toJson()).toList();
+      }
+
       final response = await _dioClient.post(
         ApiConstants.sendMessage,
-        data: {
-          'channel_id': channelId,
-          'body': body,
-        },
+        data: data,
       );
 
       if (response.statusCode == 200) {
