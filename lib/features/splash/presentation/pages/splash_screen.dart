@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nspl_odoo/core/router/app_router.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/storage/storage_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -78,10 +79,18 @@ class _SplashScreenState extends State<SplashScreen>
     });
 
     // Navigate to login after 3 seconds
-    Future.delayed(const Duration(seconds: 3), () {
+    Future.delayed(const Duration(seconds: 3), () async {
       if (mounted) {
-        context.go(AppRouter.login);
-        // Navigation will be handled by router
+        // Check if user is already logged in
+        final isLoggedIn = await StorageService.instance.isLoggedIn();
+        
+        if (isLoggedIn) {
+          // User has valid session, go to API users screen
+          context.go(AppRouter.apiUsers);
+        } else {
+          // No session, go to login
+          context.go(AppRouter.login);
+        }
       }
     });
   }

@@ -56,6 +56,25 @@ class StorageService {
     return _preferences?.getString(_userNameKey);
   }
 
+  // Get all user data
+  Future<Map<String, dynamic>?> getUserData() async {
+    final userId = await getUserId();
+    final userName = await getUserName();
+    final token = await getToken();
+    final expiryTime = await getExpiryTime();
+
+    if (userId == null || userName == null || token == null) {
+      return null;
+    }
+
+    return {
+      'user_id': userId,
+      'user_name': userName,
+      'session_token': token,
+      'expiry_time': expiryTime,
+    };
+  }
+
   // Get expiry time
   Future<String?> getExpiryTime() async {
     return _preferences?.getString(_expiryTimeKey);
@@ -69,6 +88,28 @@ class StorageService {
   // Check if user is logged in
   Future<bool> isLoggedIn() async {
     final token = await getToken();
-    return token != null && token.isNotEmpty;
+    if (token == null || token.isEmpty) {
+      return false;
+    }
+
+    // Check if session is expired
+    final expiryTime = await getExpiryTime();
+    if (expiryTime != null) {
+      try {
+        final expiry = DateTime.parse(expiryTime);
+        final now = DateTime.now();
+        
+        // If session expired, clear all data
+        if (now.isAfter(expiry)) {
+          await clearAll();
+          return false;
+        }
+      } catch (e) {
+        // If parsing fails, assume not expired
+        return true;
+      }
+    }
+
+    return true;
   }
 }
