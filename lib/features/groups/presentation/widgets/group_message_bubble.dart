@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../domain/models/group_model.dart';
-import '../../../../core/storage/storage_service.dart';
 
-class GroupMessageBubble extends ConsumerStatefulWidget {
+class GroupMessageBubble extends ConsumerWidget {
   final GroupMessage message;
 
   const GroupMessageBubble({
@@ -13,30 +12,8 @@ class GroupMessageBubble extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<GroupMessageBubble> createState() => _GroupMessageBubbleState();
-}
-
-class _GroupMessageBubbleState extends ConsumerState<GroupMessageBubble> {
-  int? _currentUserId;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadCurrentUserId();
-  }
-
-  Future<void> _loadCurrentUserId() async {
-    final userId = await StorageService.instance.getUserId();
-    if (mounted) {
-      setState(() {
-        _currentUserId = userId;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isMe = _currentUserId != null && widget.message.senderId == _currentUserId;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isMe = message.isMe;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -49,7 +26,7 @@ class _GroupMessageBubbleState extends ConsumerState<GroupMessageBubble> {
               radius: 16,
               backgroundColor: AppColors.purple1.withValues(alpha: 0.2),
               child: Text(
-                widget.message.senderName.isNotEmpty ? widget.message.senderName[0].toUpperCase() : '?',
+                message.senderName.isNotEmpty ? message.senderName[0].toUpperCase() : '?',
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
@@ -67,7 +44,7 @@ class _GroupMessageBubbleState extends ConsumerState<GroupMessageBubble> {
                   Padding(
                     padding: const EdgeInsets.only(left: 8, bottom: 4),
                     child: Text(
-                      widget.message.senderName,
+                      message.senderName,
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -98,7 +75,7 @@ class _GroupMessageBubbleState extends ConsumerState<GroupMessageBubble> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        widget.message.plainBody,
+                        message.plainBody,
                         style: TextStyle(
                           fontSize: 14,
                           color: isMe ? AppColors.white : AppColors.darkGrey,
@@ -106,7 +83,7 @@ class _GroupMessageBubbleState extends ConsumerState<GroupMessageBubble> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        _formatTime(widget.message.date),
+                        _formatTime(message.date),
                         style: TextStyle(
                           fontSize: 10,
                           color: isMe

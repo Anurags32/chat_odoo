@@ -149,6 +149,7 @@ class GroupMessage {
   final int senderId;
   final String senderName;
   final DateTime date;
+  final bool isMe;
   final List<dynamic> attachments;
 
   GroupMessage({
@@ -157,16 +158,21 @@ class GroupMessage {
     required this.senderId,
     required this.senderName,
     required this.date,
+    required this.isMe,
     required this.attachments,
   });
 
   factory GroupMessage.fromJson(Map<String, dynamic> json) {
+    // Parse author object
+    final author = json['author'] as Map<String, dynamic>;
+    
     return GroupMessage(
-      messageId: json['message_id'] as int,
+      messageId: json['id'] as int,
       body: json['body'] as String,
-      senderId: json['sender_id'] as int,
-      senderName: json['sender_name'] as String,
+      senderId: author['id'] as int,
+      senderName: author['name'] as String,
       date: DateTime.parse(json['date'] as String),
+      isMe: json['is_me'] as bool,
       attachments: json['attachments'] as List<dynamic>,
     );
   }
@@ -179,23 +185,25 @@ class GroupMessage {
 
 class GetGroupMessagesResponse {
   final bool success;
-  final int groupId;
-  final int messageCount;
+  final int channelId;
+  final String channelName;
   final List<GroupMessage> messages;
 
   GetGroupMessagesResponse({
     required this.success,
-    required this.groupId,
-    required this.messageCount,
+    required this.channelId,
+    required this.channelName,
     required this.messages,
   });
 
   factory GetGroupMessagesResponse.fromJson(Map<String, dynamic> json) {
+    final channel = json['channel'] as Map<String, dynamic>;
+    
     return GetGroupMessagesResponse(
       success: json['success'] as bool,
-      groupId: json['group_id'] as int,
-      messageCount: json['message_count'] as int,
-      messages: (json['messages'] as List)
+      channelId: channel['id'] as int,
+      channelName: channel['name'] as String,
+      messages: (channel['messages'] as List)
           .map((msg) => GroupMessage.fromJson(msg as Map<String, dynamic>))
           .toList(),
     );
