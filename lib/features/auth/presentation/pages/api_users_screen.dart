@@ -48,6 +48,7 @@ class _ApiUsersScreenState extends ConsumerState<ApiUsersScreen>
     // Fetch users on init
     Future.microtask(() {
       ref.read(usersApiProvider.notifier).fetchUsers();
+      ref.read(groupApiProvider.notifier).fetchAllGroups();
     });
   }
 
@@ -614,7 +615,11 @@ class _ApiUsersScreenState extends ConsumerState<ApiUsersScreen>
   Widget _buildRefreshButton() {
     return FloatingActionButton(
       onPressed: () {
-        ref.read(usersApiProvider.notifier).fetchUsers();
+        if (_tabController.index == 0) {
+          ref.read(usersApiProvider.notifier).fetchUsers();
+        } else {
+          ref.read(groupApiProvider.notifier).fetchAllGroups();
+        }
       },
       backgroundColor: AppColors.purple1,
       child: const Icon(Icons.refresh, color: AppColors.white),

@@ -1,7 +1,33 @@
+// Group Member Model
+class GroupMember {
+  final int partnerId;
+  final String name;
+
+  GroupMember({
+    required this.partnerId,
+    required this.name,
+  });
+
+  factory GroupMember.fromJson(Map<String, dynamic> json) {
+    return GroupMember(
+      partnerId: json['partner_id'] as int,
+      name: json['name'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'partner_id': partnerId,
+      'name': name,
+    };
+  }
+}
+
 class GroupModel {
   final int channelId;
   final String name;
   final int memberCount;
+  final List<GroupMember>? members;
   final String? description;
   final String? avatar;
   final String? lastMessage;
@@ -11,6 +37,7 @@ class GroupModel {
     required this.channelId,
     required this.name,
     required this.memberCount,
+    this.members,
     this.description,
     this.avatar,
     this.lastMessage,
@@ -22,6 +49,11 @@ class GroupModel {
       channelId: json['channel_id'] as int,
       name: json['group_name'] as String,
       memberCount: json['member_count'] as int,
+      members: json['members'] != null
+          ? (json['members'] as List)
+              .map((m) => GroupMember.fromJson(m as Map<String, dynamic>))
+              .toList()
+          : null,
       description: json['description'] as String?,
       avatar: json['avatar'] as String?,
       lastMessage: json['last_message'] as String?,
@@ -36,6 +68,7 @@ class GroupModel {
       'channel_id': channelId,
       'group_name': name,
       'member_count': memberCount,
+      'members': members?.map((m) => m.toJson()).toList(),
       'description': description,
       'avatar': avatar,
       'last_message': lastMessage,
@@ -48,6 +81,28 @@ class GroupModel {
 }
 
 // API Response Models
+class GetAllGroupsResponse {
+  final bool success;
+  final int totalGroups;
+  final List<GroupModel> groups;
+
+  GetAllGroupsResponse({
+    required this.success,
+    required this.totalGroups,
+    required this.groups,
+  });
+
+  factory GetAllGroupsResponse.fromJson(Map<String, dynamic> json) {
+    return GetAllGroupsResponse(
+      success: json['success'] as bool,
+      totalGroups: json['total_groups'] as int,
+      groups: (json['groups'] as List)
+          .map((g) => GroupModel.fromJson(g as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+}
+
 class CreateGroupResponse {
   final bool success;
   final GroupModel group;

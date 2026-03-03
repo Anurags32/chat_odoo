@@ -7,6 +7,37 @@ import '../../domain/models/group_model.dart';
 class GroupApiService {
   final DioClient _dioClient = DioClient.instance;
 
+  // Get All Groups
+  Future<ApiResponse<GetAllGroupsResponse>> getAllGroups() async {
+    try {
+      final response = await _dioClient.get(
+        ApiConstants.getAllGroups,
+      );
+
+      if (response.statusCode == 200) {
+        final groupsResponse = GetAllGroupsResponse.fromJson(response.data);
+
+        return ApiResponse.success(
+          groupsResponse,
+          message: 'Groups fetched successfully',
+          statusCode: response.statusCode,
+        );
+      } else {
+        return ApiResponse.error(
+          'Failed to fetch groups',
+          statusCode: response.statusCode,
+        );
+      }
+    } on DioException catch (e) {
+      return ApiResponse.error(
+        e.response?.data['message'] ?? 'Network error occurred',
+        statusCode: e.response?.statusCode,
+      );
+    } catch (e) {
+      return ApiResponse.error('An unexpected error occurred');
+    }
+  }
+
   // Create Group
   Future<ApiResponse<CreateGroupResponse>> createGroup({
     required String groupName,

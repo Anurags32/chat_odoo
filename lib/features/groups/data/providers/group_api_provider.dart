@@ -74,6 +74,24 @@ class GroupNotifier extends StateNotifier<GroupState> {
 
   GroupNotifier(this._groupApiService) : super(GroupState());
 
+  Future<void> fetchAllGroups() async {
+    state = state.copyWith(isLoading: true, error: null);
+
+    final response = await _groupApiService.getAllGroups();
+
+    if (response.success && response.data != null) {
+      state = state.copyWith(
+        groups: response.data!.groups,
+        isLoading: false,
+      );
+    } else {
+      state = state.copyWith(
+        isLoading: false,
+        error: response.message,
+      );
+    }
+  }
+
   Future<GroupModel?> createGroup({
     required String groupName,
     required List<int> partnerIds,
