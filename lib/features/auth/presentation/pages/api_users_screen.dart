@@ -90,7 +90,11 @@ class _ApiUsersScreenState extends ConsumerState<ApiUsersScreen>
         child: Column(
           children: [
             const SizedBox(height: 100),
-            _buildTabBar(),
+            SizedBox(
+              height:100,
+              child:_buildTabBar(),
+            ),
+            
             _buildSearchBar(),
             Expanded(
               child: TabBarView(
