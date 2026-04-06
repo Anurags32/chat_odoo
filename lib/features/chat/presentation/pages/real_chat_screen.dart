@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../../../../core/network/websocket_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/user_avatar_widget.dart';
 import '../../../auth/domain/models/api_user_model.dart';
 import '../../data/providers/chat_api_provider.dart';
+import '../../data/providers/websocket_provider.dart';
 import '../../domain/models/channel_model.dart';
 
 class RealChatScreen extends ConsumerStatefulWidget {
@@ -31,9 +33,23 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
     );
     _animationController.forward();
 
-    // Create/Get channel for this user
-    Future.microtask(() {
-      ref.read(chatApiProvider.notifier).createChannel(widget.user.partnerId);
+    // Step 1: Create/get channel via REST, then connect WebSocket
+    Future.microtask(() async {
+      await ref
+          .read(chatApiProvider.notifier)
+          .createChannel(widget.user.partnerId);
+
+      // Step 2: After channel is ready, connect WebSocket
+      final chatState = ref.read(chatApiProvider);
+      if (chatState.channel != null) {
+        final lastId = chatState.messages.isNotEmpty
+            ? chatState.messages.last.id
+            : 0;
+        await ref.read(webSocketProvider.notifier).connect(
+              channelId: chatState.channel!.id,
+              lastMessageId: lastId,
+            );
+      }
     });
   }
 
@@ -42,17 +58,21 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
     _messageController.dispose();
     _scrollController.dispose();
     _animationController.dispose();
+    // WebSocket disconnects automatically via autoDispose
     super.dispose();
   }
 
   void _sendMessage() {
-    if (_messageController.text.trim().isEmpty) return;
+    final text = _messageController.text.trim();
+    if (text.isEmpty) return;
 
-    ref.read(chatApiProvider.notifier).sendMessage(_messageController.text.trim());
+    ref.read(chatApiProvider.notifier).sendMessage(text);
     _messageController.clear();
+    _scrollToBottom();
+  }
 
-    // Scroll to bottom
-    Future.delayed(const Duration(milliseconds: 100), () {
+  void _scrollToBottom() {
+    Future.delayed(const Duration(milliseconds: 150), () {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
@@ -66,9 +86,10 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
   @override
   Widget build(BuildContext context) {
     final chatState = ref.watch(chatApiProvider);
+    final wsState = ref.watch(webSocketProvider);
 
-    // Listen to errors
-    ref.listen<ChatState>(chatApiProvider, (previous, next) {
+    // Show REST errors
+    ref.listen<ChatState>(chatApiProvider, (_, next) {
       if (next.error != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -80,9 +101,34 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
       }
     });
 
+    // Show WS errors
+    ref.listen<WebSocketState>(webSocketProvider, (_, next) {
+      if (next.error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('WS: ${next.error!}'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        ref.read(webSocketProvider.notifier).clearError();
+      }
+
+      // Auto-scroll when new live message arrives
+      if (next.liveMessages.length >
+          (ref.read(webSocketProvider).liveMessages.length)) {
+        _scrollToBottom();
+      }
+    });
+
+    // Merge REST messages + live WS messages (deduplicate by id)
+    final allMessages = _mergeMessages(
+      chatState.messages,
+      wsState.liveMessages,
+    );
+
     return Scaffold(
       extendBodyBehindAppBar: true,
-      appBar: _buildAppBar(),
+      appBar: _buildAppBar(wsState.status),
       body: Container(
         decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
         child: Column(
@@ -91,9 +137,9 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
             Expanded(
               child: chatState.isLoading
                   ? _buildLoadingState()
-                  : chatState.messages.isEmpty
+                  : allMessages.isEmpty
                       ? _buildEmptyState()
-                      : _buildMessagesList(chatState.messages),
+                      : _buildMessagesList(allMessages),
             ),
             _buildChatInput(chatState.isSending),
           ],
@@ -102,7 +148,22 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
     );
   }
 
-  PreferredSizeWidget _buildAppBar() {
+  /// Merge REST history + live WS messages, deduplicate by id
+  List<ChatMessageModel> _mergeMessages(
+    List<ChatMessageModel> history,
+    List<ChatMessageModel> live,
+  ) {
+    final seen = <int>{};
+    final merged = <ChatMessageModel>[];
+    for (final m in [...history, ...live]) {
+      if (seen.add(m.id)) merged.add(m);
+    }
+    return merged;
+  }
+
+  // ── AppBar ────────────────────────────────────────────────────────────────
+
+  PreferredSizeWidget _buildAppBar(WsStatus wsStatus) {
     return AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
@@ -162,14 +223,18 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                Text(
-                  widget.user.isOnline ? 'Online' : 'Offline',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: widget.user.isOnline
-                        ? AppColors.purple1
-                        : AppColors.grey,
-                  ),
+                Row(
+                  children: [
+                    _wsStatusDot(wsStatus),
+                    const SizedBox(width: 4),
+                    Text(
+                      _wsStatusLabel(wsStatus),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: _wsStatusColor(wsStatus),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -177,12 +242,52 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
         ],
       ),
       actions: [
-        IconButton(icon: const Icon(Icons.videocam_outlined), onPressed: () {}),
+        IconButton(
+            icon: const Icon(Icons.videocam_outlined), onPressed: () {}),
         IconButton(icon: const Icon(Icons.call_outlined), onPressed: () {}),
         IconButton(icon: const Icon(Icons.more_vert), onPressed: () {}),
       ],
     );
   }
+
+  Widget _wsStatusDot(WsStatus status) {
+    return Container(
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(
+        color: _wsStatusColor(status),
+        shape: BoxShape.circle,
+      ),
+    );
+  }
+
+  Color _wsStatusColor(WsStatus status) {
+    switch (status) {
+      case WsStatus.connected:
+        return AppColors.success;
+      case WsStatus.connecting:
+        return Colors.orange;
+      case WsStatus.error:
+        return AppColors.error;
+      case WsStatus.disconnected:
+        return AppColors.grey;
+    }
+  }
+
+  String _wsStatusLabel(WsStatus status) {
+    switch (status) {
+      case WsStatus.connected:
+        return 'Connected';
+      case WsStatus.connecting:
+        return 'Connecting...';
+      case WsStatus.error:
+        return 'Connection error';
+      case WsStatus.disconnected:
+        return widget.user.isOnline ? 'Online' : 'Offline';
+    }
+  }
+
+  // ── States ────────────────────────────────────────────────────────────────
 
   Widget _buildLoadingState() {
     return const Center(
@@ -236,6 +341,8 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
     );
   }
 
+  // ── Messages ──────────────────────────────────────────────────────────────
+
   Widget _buildMessagesList(List<ChatMessageModel> messages) {
     return ListView.builder(
       controller: _scrollController,
@@ -243,12 +350,12 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
       itemCount: messages.length,
       itemBuilder: (context, index) {
         final message = messages[index];
-        // Use is_me field from API if available, otherwise check author id
-        final isMe = message.isMe ?? (message.author.id != widget.user.partnerId);
-
+        final isMe =
+            message.isMe ?? (message.author.id != widget.user.partnerId);
         return FadeTransition(
           opacity: Tween<double>(begin: 0.0, end: 1.0).animate(
-            CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
+            CurvedAnimation(
+                parent: _animationController, curve: Curves.easeIn),
           ),
           child: _buildMessageBubble(message, isMe),
         );
@@ -257,13 +364,13 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
   }
 
   Widget _buildMessageBubble(ChatMessageModel message, bool isMe) {
-    // Remove HTML tags from body
     final cleanBody = message.body.replaceAll(RegExp(r'<[^>]*>'), '');
-    
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
-        mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment:
+            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
           if (!isMe) ...[
             Container(
@@ -283,7 +390,8 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
           ],
           Flexible(
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                 gradient: isMe
                     ? AppColors.buttonGradient
@@ -332,6 +440,8 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
       ),
     );
   }
+
+  // ── Input ─────────────────────────────────────────────────────────────────
 
   Widget _buildChatInput(bool isSending) {
     return Container(
@@ -408,20 +518,19 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
     );
   }
 
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
   String _formatTime(String dateStr) {
     try {
       final date = DateTime.parse(dateStr);
       final now = DateTime.now();
-      final difference = now.difference(date);
-
-      if (difference.inDays == 0) {
-        return DateFormat('HH:mm').format(date);
-      } else if (difference.inDays == 1) {
+      final diff = now.difference(date);
+      if (diff.inDays == 0) return DateFormat('HH:mm').format(date);
+      if (diff.inDays == 1) {
         return 'Yesterday ${DateFormat('HH:mm').format(date)}';
-      } else {
-        return DateFormat('MMM dd, HH:mm').format(date);
       }
-    } catch (e) {
+      return DateFormat('MMM dd, HH:mm').format(date);
+    } catch (_) {
       return dateStr;
     }
   }
