@@ -101,8 +101,8 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
       }
     });
 
-    // Show WS errors
-    ref.listen<WebSocketState>(webSocketProvider, (_, next) {
+    // Show WS errors + auto-scroll on new message
+    ref.listen<WebSocketState>(webSocketProvider, (previous, next) {
       if (next.error != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -113,9 +113,9 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
         ref.read(webSocketProvider.notifier).clearError();
       }
 
-      // Auto-scroll when new live message arrives
-      if (next.liveMessages.length >
-          (ref.read(webSocketProvider).liveMessages.length)) {
+      // Auto-scroll when a new live message arrives
+      final prevCount = previous?.liveMessages.length ?? 0;
+      if (next.liveMessages.length > prevCount) {
         _scrollToBottom();
       }
     });

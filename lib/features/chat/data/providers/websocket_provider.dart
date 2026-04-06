@@ -69,14 +69,48 @@ class WebSocketNotifier extends StateNotifier<WebSocketState> {
         if (message == null) continue;
 
         final type = message['type'] as String?;
-        debugPrint('[WS] Event type: $type');
+        print('[WS] Event type: $type');
 
-        if (type == 'mail.message/insert' || type == 'mail.record/insert') {
+        if (type == 'discuss.channel/new_message') {
+          // Real-time new message — main event we care about
+          _processNewMessage(message['payload'] as Map<String, dynamic>?);
+        } else if (type == 'mail.message/insert' || type == 'mail.record/insert') {
+          // Fallback: some Odoo versions send messages here
           _processInsertEvent(message['payload'] as Map<String, dynamic>?);
         }
+        // discuss.channel.member typing events — ignored intentionally
       } catch (e) {
-        debugPrint('[WS] Error processing event: $e | event: $event');
+        print('[WS] Error processing event: $e | event: $event');
       }
+    }
+  }
+
+  /// Handles: discuss.channel/new_message
+  /// payload.data['mail.message'] contains the actual message list
+  void _processNewMessage(Map<String, dynamic>? payload) {
+    if (payload == null) return;
+
+    final data = payload['data'] as Map<String, dynamic>?;
+    if (data == null) return;
+
+    final mailMessages = data['mail.message'] as List<dynamic>?;
+    if (mailMessages == null || mailMessages.isEmpty) return;
+
+    final newMsgs = <ChatMessageModel>[];
+    for (final m in mailMessages) {
+      try {
+        final msg = _parseMailMessage(m as Map<String, dynamic>);
+        if (msg != null) newMsgs.add(msg);
+      } catch (e) {
+        print('[WS] Failed to parse new_message: $e');
+      }
+    }
+
+    if (newMsgs.isNotEmpty && mounted) {
+      print('[WS] Adding ${newMsgs.length} new message(s) to state.');
+      state = state.copyWith(
+        liveMessages: [...state.liveMessages, ...newMsgs],
+      );
     }
   }
 
@@ -106,15 +140,15 @@ class WebSocketNotifier extends StateNotifier<WebSocketState> {
   }
 
   ChatMessageModel? _parseMailMessage(Map<String, dynamic> m) {
-    // Odoo websocket mail.message shape
     final id = m['id'] as int?;
     final body = m['body'] as String? ?? '';
     final date = m['date'] as String? ?? DateTime.now().toIso8601String();
 
-    // Author can be a partner reference
+    // author is {"id": 3, "type": "partner"} — name not always present
     final authorRaw = m['author'] as Map<String, dynamic>?;
     final authorId = authorRaw?['id'] as int? ?? 0;
-    final authorName = authorRaw?['name'] as String? ?? 'Unknown';
+    // name may come from res.partner lookup; fallback to id string
+    final authorName = authorRaw?['name'] as String? ?? 'User $authorId';
 
     if (id == null) return null;
 
