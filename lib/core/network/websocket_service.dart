@@ -15,7 +15,7 @@ typedef OnStatusCallback = void Function(WsStatus status);
 typedef OnErrorCallback = void Function(String error);
 
 class WebSocketService {
-  static const String _wsBaseUrl = 'ws://192.168.29.231:8072/websocket';
+  static const String _wsBaseUrl = 'ws://192.168.1.102:8072/websocket';
 
   WebSocketChannel? _channel;
   StreamSubscription? _subscription;

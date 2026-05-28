@@ -23,6 +23,37 @@ class GroupMember {
   }
 }
 
+// Last message info returned inside group object
+class GroupLastMessage {
+  final int id;
+  final String body;
+  final DateTime date;
+  final int authorId;
+  final String authorName;
+
+  GroupLastMessage({
+    required this.id,
+    required this.body,
+    required this.date,
+    required this.authorId,
+    required this.authorName,
+  });
+
+  factory GroupLastMessage.fromJson(Map<String, dynamic> json) {
+    final author = json['author'] as Map<String, dynamic>;
+    return GroupLastMessage(
+      id: json['id'] as int,
+      body: json['body'] as String,
+      date: DateTime.parse(json['date'] as String),
+      authorId: author['id'] as int,
+      authorName: author['name'] as String,
+    );
+  }
+
+  // Strip HTML tags from body
+  String get plainBody => body.replaceAll(RegExp(r'<[^>]*>'), '');
+}
+
 class GroupModel {
   final int channelId;
   final String name;
@@ -30,8 +61,8 @@ class GroupModel {
   final List<GroupMember>? members;
   final String? description;
   final String? avatar;
-  final String? lastMessage;
-  final DateTime? lastMessageTime;
+  final GroupLastMessage? lastMessageInfo;
+  final int unreadCount;
 
   GroupModel({
     required this.channelId,
@@ -40,11 +71,18 @@ class GroupModel {
     this.members,
     this.description,
     this.avatar,
-    this.lastMessage,
-    this.lastMessageTime,
+    this.lastMessageInfo,
+    this.unreadCount = 0,
   });
 
   factory GroupModel.fromJson(Map<String, dynamic> json) {
+    // last_message_date can be an object or null
+    GroupLastMessage? lastMsg;
+    final rawLastMsg = json['last_message_date'];
+    if (rawLastMsg != null && rawLastMsg is Map<String, dynamic>) {
+      lastMsg = GroupLastMessage.fromJson(rawLastMsg);
+    }
+
     return GroupModel(
       channelId: json['channel_id'] as int,
       name: json['group_name'] as String,
@@ -56,10 +94,8 @@ class GroupModel {
           : null,
       description: json['description'] as String?,
       avatar: json['avatar'] as String?,
-      lastMessage: json['last_message'] as String?,
-      lastMessageTime: json['last_message_time'] != null
-          ? DateTime.parse(json['last_message_time'] as String)
-          : null,
+      lastMessageInfo: lastMsg,
+      unreadCount: json['unread_count'] as int? ?? 0,
     );
   }
 
@@ -71,13 +107,14 @@ class GroupModel {
       'members': members?.map((m) => m.toJson()).toList(),
       'description': description,
       'avatar': avatar,
-      'last_message': lastMessage,
-      'last_message_time': lastMessageTime?.toIso8601String(),
+      'unread_count': unreadCount,
     };
   }
 
-  // For backward compatibility with UI
+  // Convenience getters for UI backward compatibility
   String get id => channelId.toString();
+  String? get lastMessage => lastMessageInfo?.plainBody;
+  DateTime? get lastMessageTime => lastMessageInfo?.date;
 }
 
 // API Response Models

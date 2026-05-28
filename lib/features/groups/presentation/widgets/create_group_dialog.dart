@@ -364,7 +364,7 @@ class _CreateGroupDialogState extends ConsumerState<CreateGroupDialog> {
                             ),
                           ),
                           Text(
-                            user.email,
+                            user.email ?? 'No email',
                             style: const TextStyle(
                               fontSize: 12,
                               color: AppColors.grey,

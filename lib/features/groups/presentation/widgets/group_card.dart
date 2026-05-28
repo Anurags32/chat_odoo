@@ -86,21 +86,38 @@ class GroupCard extends StatelessWidget {
             style: const TextStyle(fontSize: 12, color: AppColors.grey),
           ),
         const SizedBox(height: 4),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: AppColors.purple1.withValues(alpha: 0.2),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(
-            '${group.memberCount}',
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+        if (group.unreadCount > 0)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
               color: AppColors.purple1,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              '${group.unreadCount}',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+          )
+        else
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.purple1.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              '${group.memberCount}',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.purple1,
+              ),
             ),
           ),
-        ),
       ],
     );
   }

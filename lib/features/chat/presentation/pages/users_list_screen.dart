@@ -101,7 +101,7 @@ class _UsersListScreenState extends State<UsersListScreen> {
             radius: 24,
           ),
           title: Text(user.name),
-          subtitle: Text(user.email),
+          subtitle: Text(user.email ?? 'No email'),
           trailing: _buildStatusChip(user.imStatus),
           onTap: () {
             // Handle user tap
@@ -158,7 +158,7 @@ class _UsersListScreenState extends State<UsersListScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            Text('Email: ${user.email}'),
+            Text('Email: ${user.email ?? 'No email'}'),
             Text('ID: ${user.id}'),
             Text('Partner ID: ${user.partnerId}'),
             Text('Status: ${user.imStatus}'),

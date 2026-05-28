@@ -80,7 +80,7 @@ class _ApiUsersScreenState extends ConsumerState<ApiUsersScreen>
 
     final filteredUsers = usersState.users.where((user) {
       return user.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          user.email.toLowerCase().contains(_searchQuery.toLowerCase());
+          (user.email ?? '').toLowerCase().contains(_searchQuery.toLowerCase());
     }).toList();
 
     return Scaffold(
@@ -563,7 +563,7 @@ class _ApiUsersScreenState extends ConsumerState<ApiUsersScreen>
                           const SizedBox(width: 4),
                           Expanded(
                             child: Text(
-                              user.email,
+                              user.email ?? 'No email',
                               style: const TextStyle(
                                 fontSize: 14,
                                 color: AppColors.grey,
