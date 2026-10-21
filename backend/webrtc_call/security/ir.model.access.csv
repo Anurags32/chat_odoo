@@ -1,5 +1,0 @@
-id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
-access_webrtc_call_user,webrtc.call.user,model_webrtc_call,group_webrtc_user,1,1,1,0
-access_webrtc_call_manager,webrtc.call.manager,model_webrtc_call,group_webrtc_manager,1,1,1,1
-access_webrtc_device_user,webrtc.device.user,model_webrtc_device,group_webrtc_user,1,1,1,1
-access_webrtc_device_manager,webrtc.device.manager,model_webrtc_device,group_webrtc_manager,1,1,1,1

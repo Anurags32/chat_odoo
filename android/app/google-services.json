@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "529326497151",
+    "project_id": "chatodoo-bb62c",
+    "storage_bucket": "chatodoo-bb62c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:529326497151:android:4eb513c56b62089bda0e4a",
+        "android_client_info": {
+          "package_name": "com.example.nspl_odoo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCbS6WAqCDmnrjzXHKaoBOdf8DYcXM-dx0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
