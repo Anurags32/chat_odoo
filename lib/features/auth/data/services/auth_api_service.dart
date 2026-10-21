@@ -32,6 +32,12 @@ class AuthApiService {
           expiryTime: loginResponse.expiryTime,
         );
 
+        // Step 1: Call Odoo official session authentication to save session_id cookie
+        await authenticateOdooSession(
+          login: login,
+          password: password,
+        );
+
         return ApiResponse.success(
           loginResponse,
           message: 'Login successful',
@@ -116,5 +122,62 @@ class AuthApiService {
     } catch (e) {
       return ApiResponse.error('An unexpected error occurred');
     }
+  }
+
+  /// Step 1: Authenticate with Odoo official session (/web/session/authenticate)
+  /// and save session_id cookie for WebRTC (/mail/rtc/*) and WebSocket bus.
+  Future<String?> authenticateOdooSession({
+    required String login,
+    required String password,
+    String db = ApiConstants.database,
+  }) async {
+    try {
+      final response = await _dioClient.post(
+        ApiConstants.sessionAuthenticate,
+        data: {
+          'jsonrpc': '2.0',
+          'params': {
+            'db': db,
+            'login': login,
+            'password': password,
+          },
+        },
+      );
+
+      String? sessionId;
+
+      // 1. Try extracting session_id from response body (Odoo json-rpc result)
+      if (response.data is Map && response.data['result'] is Map) {
+        final result = response.data['result'] as Map;
+        sessionId = result['session_id'] as String?;
+      }
+
+      // 2. Try extracting from Set-Cookie header if not in body
+      if (sessionId == null || sessionId.isEmpty) {
+        final cookies = response.headers['set-cookie'];
+        if (cookies != null) {
+          for (final c in cookies) {
+            final match = RegExp(r'session_id=([^;]+)').firstMatch(c);
+            if (match != null) {
+              sessionId = match.group(1);
+              break;
+            }
+          }
+        }
+      }
+
+      if (sessionId != null && sessionId.isNotEmpty) {
+        await _storageService.saveSessionCookie(sessionId);
+        print('\x1B[32m[AUTH] Odoo session_id cookie saved: $sessionId\x1B[0m');
+        return sessionId;
+      } else {
+        print(
+          '\x1B[33m[AUTH] Warning: session_id could not be extracted from authenticate response\x1B[0m',
+        );
+      }
+    } catch (e) {
+      print('\x1B[31m[AUTH] Error during Odoo session authentication: $e\x1B[0m');
+    }
+    return null;
   }
 }

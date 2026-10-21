@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  coturn:
+    image: coturn/coturn:latest
+    container_name: coturn_webrtc
+    restart: unless-stopped
+    network_mode: "host" # Required for proper UDP relaying and NAT traversal
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+      - /etc/letsencrypt/live/turn.yourdomain.com:/etc/coturn/certs:ro
+    # If network_mode: host is not allowed in your environment, expose these ports:
+    # ports:
+    #   - "3478:3478/tcp"
+    #   - "3478:3478/udp"
+    #   - "5349:5349/tcp"
+    #   - "5349:5349/udp"
+    #   - "49152-65535:49152-65535/udp"
+    command:
+      - "-c"
+      - "/etc/coturn/turnserver.conf"

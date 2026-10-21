@@ -9,6 +9,9 @@ import '../../features/chat/domain/models/user_model.dart';
 import '../../features/groups/presentation/pages/groups_list_screen.dart';
 import '../../features/groups/presentation/pages/group_chat_screen.dart';
 import '../../features/groups/domain/models/group_model.dart';
+import '../../features/call/presentation/pages/audio_call_screen.dart';
+import '../../features/call/presentation/pages/video_call_screen.dart';
+import '../../features/call/presentation/pages/call_history_screen.dart';
 
 class AppRouter {
   static const String splash = '/';
@@ -18,6 +21,9 @@ class AppRouter {
   static const String chat = '/chat';
   static const String groupsList = '/groups';
   static const String groupChat = '/group-chat';
+  static const String audioCall = '/audio-call';
+  static const String videoCall = '/video-call';
+  static const String callHistory = '/call-history';
 
   static final GoRouter router = GoRouter(
     initialLocation: splash,
@@ -149,6 +155,24 @@ class AppRouter {
                 },
           );
         },
+      ),
+      GoRoute(
+        path: audioCall,
+        pageBuilder: (context, state) => const MaterialPage(
+          child: AudioCallScreen(),
+        ),
+      ),
+      GoRoute(
+        path: videoCall,
+        pageBuilder: (context, state) => const MaterialPage(
+          child: VideoCallScreen(),
+        ),
+      ),
+      GoRoute(
+        path: callHistory,
+        pageBuilder: (context, state) => const MaterialPage(
+          child: CallHistoryScreen(),
+        ),
       ),
     ],
   );

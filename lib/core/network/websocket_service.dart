@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../storage/storage_service.dart';
+import 'api_constants.dart';
 
 /// WebSocket connection states
 enum WsStatus { disconnected, connecting, connected, error }
@@ -15,7 +16,7 @@ typedef OnStatusCallback = void Function(WsStatus status);
 typedef OnErrorCallback = void Function(String error);
 
 class WebSocketService {
-  static const String _wsBaseUrl = 'ws://192.168.1.102:8072/websocket';
+  static const String _wsBaseUrl = ApiConstants.wsUrl;
 
   WebSocketChannel? _channel;
   StreamSubscription? _subscription;
@@ -54,24 +55,36 @@ class WebSocketService {
     debugPrint('[WS] Connecting to $_wsBaseUrl ...');
 
     try {
+      final sessionCookie = await StorageService.instance.getSessionCookie();
       final token = await StorageService.instance.getToken();
+      final cookieToUse = (sessionCookie != null && sessionCookie.isNotEmpty)
+          ? sessionCookie
+          : token;
 
       // ── Debug: raw HTTP response before WS upgrade ──────────────────────
-      await _debugHttpResponse(token);
+      await _debugHttpResponse(cookieToUse);
       // ────────────────────────────────────────────────────────────────────
 
       final headers = <String, dynamic>{};
-      if (token != null && token.isNotEmpty) {
-        headers['Cookie'] = 'session_id=$token';
-        print('[WS] Attaching session cookie: session_id=$token');
+      if (cookieToUse != null && cookieToUse.isNotEmpty) {
+        headers['Cookie'] = 'session_id=$cookieToUse';
+        print('[WS] Attaching session cookie: session_id=$cookieToUse');
       } else {
-        print('[WS] Warning: no session token — connecting without cookie.');
+        print('[WS] Warning: no session cookie/token — connecting without cookie.');
       }
       // Odoo requires Origin header — without it returns 400 "missing header: origin"
-      headers['Origin'] = 'http://192.168.29.231:8072';
+      headers['Origin'] = ApiConstants.wsOrigin;
+
+      // Ensure URL uses ws:// or wss:// scheme
+      String wsEndpoint = _wsBaseUrl;
+      if (wsEndpoint.startsWith('https://')) {
+        wsEndpoint = wsEndpoint.replaceFirst('https://', 'wss://');
+      } else if (wsEndpoint.startsWith('http://')) {
+        wsEndpoint = wsEndpoint.replaceFirst('http://', 'ws://');
+      }
 
       final ioSocket = await WebSocket.connect(
-        _wsBaseUrl,
+        wsEndpoint,
         headers: headers,
       );
       _channel = IOWebSocketChannel(ioSocket);
@@ -187,6 +200,7 @@ class WebSocketService {
       req.headers.set('Connection', 'Upgrade');
       req.headers.set('Sec-WebSocket-Key', 'dGhlIHNhbXBsZSBub25jZQ==');
       req.headers.set('Sec-WebSocket-Version', '13');
+      req.headers.set('Origin', ApiConstants.wsOrigin);
       if (token != null && token.isNotEmpty) {
         req.headers.set('Cookie', 'session_id=$token');
       }

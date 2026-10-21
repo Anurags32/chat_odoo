@@ -17,6 +17,7 @@ class StorageService {
 
   // Keys
   static const String _tokenKey = 'session_token';
+  static const String _sessionCookieKey = 'session_cookie';
   static const String _userIdKey = 'user_id';
   static const String _userNameKey = 'user_name';
   static const String _expiryTimeKey = 'expiry_time';
@@ -29,6 +30,16 @@ class StorageService {
   // Get token
   Future<String?> getToken() async {
     return _preferences?.getString(_tokenKey);
+  }
+
+  // Save session cookie (for Odoo WebRTC and WebSocket bus)
+  Future<bool> saveSessionCookie(String cookie) async {
+    return await _preferences?.setString(_sessionCookieKey, cookie) ?? false;
+  }
+
+  // Get session cookie
+  Future<String?> getSessionCookie() async {
+    return _preferences?.getString(_sessionCookieKey);
   }
 
   // Save user data

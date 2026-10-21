@@ -45,5 +45,17 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- WebRTC Audio/Video Permissions -->
+	<key>NSCameraUsageDescription</key>
+	<string>This app requires camera access for WebRTC video calls.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This app requires microphone access for WebRTC audio and video calls.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>voip</string>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
 </dict>
 </plist>

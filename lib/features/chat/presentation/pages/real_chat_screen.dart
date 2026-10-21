@@ -8,6 +8,9 @@ import '../../../auth/domain/models/api_user_model.dart';
 import '../../data/providers/chat_api_provider.dart';
 import '../../data/providers/websocket_provider.dart';
 import '../../domain/models/channel_model.dart';
+import 'package:go_router/go_router.dart';
+import '../../../call/data/models/call_model.dart';
+import '../../../call/data/providers/call_provider.dart';
 
 class RealChatScreen extends ConsumerStatefulWidget {
   final ApiUserModel user;
@@ -69,6 +72,20 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
     ref.read(chatApiProvider.notifier).sendMessage(text);
     _messageController.clear();
     _scrollToBottom();
+  }
+
+  void _initiateCall(CallType type) async {
+    final success = await ref.read(callManagerProvider.notifier).startCall(
+      calleePartnerId: widget.user.partnerId,
+      callType: type,
+    );
+    if (success && mounted) {
+      if (type == CallType.video) {
+        context.push('/video-call');
+      } else {
+        context.push('/audio-call');
+      }
+    }
   }
 
   void _scrollToBottom() {
@@ -243,8 +260,15 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
       ),
       actions: [
         IconButton(
-            icon: const Icon(Icons.videocam_outlined), onPressed: () {}),
-        IconButton(icon: const Icon(Icons.call_outlined), onPressed: () {}),
+          icon: const Icon(Icons.videocam_outlined),
+          tooltip: 'Video Call',
+          onPressed: () => _initiateCall(CallType.video),
+        ),
+        IconButton(
+          icon: const Icon(Icons.call_outlined),
+          tooltip: 'Audio Call',
+          onPressed: () => _initiateCall(CallType.audio),
+        ),
         IconButton(icon: const Icon(Icons.more_vert), onPressed: () {}),
       ],
     );

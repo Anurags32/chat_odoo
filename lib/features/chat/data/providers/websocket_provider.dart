@@ -1,8 +1,8 @@
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/network/websocket_service.dart';
 import '../../domain/models/channel_model.dart';
+import '../../../call/data/providers/call_provider.dart';
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -33,9 +33,10 @@ class WebSocketState {
 // ── Notifier ───────────────────────────────────────────────────────────────
 
 class WebSocketNotifier extends StateNotifier<WebSocketState> {
+  final Ref? _ref;
   final WebSocketService _ws = WebSocketService();
 
-  WebSocketNotifier() : super(const WebSocketState()) {
+  WebSocketNotifier([this._ref]) : super(const WebSocketState()) {
     _ws.onStatusChange = (s) {
       if (mounted) state = state.copyWith(status: s);
     };
@@ -71,7 +72,14 @@ class WebSocketNotifier extends StateNotifier<WebSocketState> {
         final type = message['type'] as String?;
         print('[WS] Event type: $type');
 
-        if (type == 'discuss.channel/new_message') {
+        if (type == 'webrtc_call') {
+          final payload = message['payload'] as Map<String, dynamic>?;
+          final ref = _ref;
+          if (payload != null && ref != null) {
+            final eventName = payload['event'] as String? ?? '';
+            ref.read(callManagerProvider.notifier).handleBusEvent(eventName, payload);
+          }
+        } else if (type == 'discuss.channel/new_message') {
           // Real-time new message — main event we care about
           _processNewMessage(message['payload'] as Map<String, dynamic>?);
         } else if (type == 'mail.message/insert' || type == 'mail.record/insert') {
@@ -171,5 +179,5 @@ class WebSocketNotifier extends StateNotifier<WebSocketState> {
 
 final webSocketProvider =
     StateNotifierProvider.autoDispose<WebSocketNotifier, WebSocketState>(
-  (ref) => WebSocketNotifier(),
+  (ref) => WebSocketNotifier(ref),
 );

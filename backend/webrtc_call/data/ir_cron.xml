@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="ir_cron_webrtc_check_missed_calls" model="ir.cron">
+        <field name="name">WebRTC: Check Missed Calls (Timeout)</field>
+        <field name="model_id" ref="model_webrtc_call"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_check_missed_calls()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">minutes</field>
+        <field name="active" eval="True"/>
+    </record>
+</odoo>

@@ -7,11 +7,16 @@ class AuthInterceptor extends Interceptor {
     RequestOptions options,
     RequestInterceptorHandler handler,
   ) async {
-    // Get token from storage
+    // Get token and session cookie from storage
     final token = await StorageService.instance.getToken();
+    final sessionCookie = await StorageService.instance.getSessionCookie();
 
     if (token != null && token.isNotEmpty) {
       options.headers['Authorization'] = 'Bearer $token';
+    }
+
+    if (sessionCookie != null && sessionCookie.isNotEmpty) {
+      options.headers['Cookie'] = 'session_id=$sessionCookie';
     }
 
     print(

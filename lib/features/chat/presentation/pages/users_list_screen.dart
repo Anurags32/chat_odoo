@@ -30,7 +30,7 @@ class _UsersListScreenState extends State<UsersListScreen> {
 
     final response = await _authApiService.getUsers();
 
-    if (response.isSuccess && response.data != null) {
+    if (response.success && response.data != null) {
       setState(() {
         _users = response.data!.users;
         _isLoading = false;
@@ -49,10 +49,7 @@ class _UsersListScreenState extends State<UsersListScreen> {
       appBar: AppBar(
         title: const Text('Users'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadUsers,
-          ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadUsers),
         ],
       ),
       body: _buildBody(),
@@ -61,9 +58,7 @@ class _UsersListScreenState extends State<UsersListScreen> {
 
   Widget _buildBody() {
     if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (_errorMessage != null) {
@@ -71,24 +66,16 @@ class _UsersListScreenState extends State<UsersListScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              _errorMessage!,
-              style: const TextStyle(color: Colors.red),
-            ),
+            Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
             const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _loadUsers,
-              child: const Text('Retry'),
-            ),
+            ElevatedButton(onPressed: _loadUsers, child: const Text('Retry')),
           ],
         ),
       );
     }
 
     if (_users.isEmpty) {
-      return const Center(
-        child: Text('No users found'),
-      );
+      return const Center(child: Text('No users found'));
     }
 
     return ListView.builder(
@@ -96,10 +83,7 @@ class _UsersListScreenState extends State<UsersListScreen> {
       itemBuilder: (context, index) {
         final user = _users[index];
         return ListTile(
-          leading: UserAvatarWidget(
-            user: user,
-            radius: 24,
-          ),
+          leading: UserAvatarWidget(user: user, radius: 24),
           title: Text(user.name),
           subtitle: Text(user.email ?? 'No email'),
           trailing: _buildStatusChip(user.imStatus),
@@ -132,10 +116,7 @@ class _UsersListScreenState extends State<UsersListScreen> {
     }
 
     return Chip(
-      label: Text(
-        label,
-        style: const TextStyle(fontSize: 12),
-      ),
+      label: Text(label, style: const TextStyle(fontSize: 12)),
       backgroundColor: color.withOpacity(0.2),
       side: BorderSide(color: color),
       padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -151,12 +132,7 @@ class _UsersListScreenState extends State<UsersListScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-              child: UserAvatarWidget(
-                user: user,
-                radius: 40,
-              ),
-            ),
+            Center(child: UserAvatarWidget(user: user, radius: 40)),
             const SizedBox(height: 16),
             Text('Email: ${user.email ?? 'No email'}'),
             Text('ID: ${user.id}'),
