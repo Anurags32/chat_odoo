@@ -38,6 +38,21 @@ class AuthApiService {
           password: password,
         );
 
+        // Step 2: Sync FCM token with database
+        final fcmToken = await _storageService.getFcmToken();
+        if (fcmToken != null && fcmToken.isNotEmpty) {
+          try {
+            print('\x1B[32m📤 [Auth] Syncing FCM token to /api/save_fcm_token after login...\x1B[0m');
+            final fcmResp = await _dioClient.post(
+              ApiConstants.saveFcmToken,
+              data: {'fcm_token': fcmToken},
+            );
+            print('\x1B[32m📥 [Auth] FCM token sync response: ${fcmResp.data}\x1B[0m');
+          } catch (e) {
+            print('\x1B[33m⚠️ [Auth] Could not sync FCM token on login: $e\x1B[0m');
+          }
+        }
+
         return ApiResponse.success(
           loginResponse,
           message: 'Login successful',
@@ -179,5 +194,35 @@ class AuthApiService {
       print('\x1B[31m[AUTH] Error during Odoo session authentication: $e\x1B[0m');
     }
     return null;
+  }
+
+  // Save FCM Token to backend database
+  Future<ApiResponse<Map<String, dynamic>>> saveFcmToken(String fcmToken) async {
+    try {
+      final response = await _dioClient.post(
+        ApiConstants.saveFcmToken,
+        data: {'fcm_token': fcmToken},
+      );
+
+      if (response.statusCode == 200) {
+        return ApiResponse.success(
+          response.data as Map<String, dynamic>,
+          message: response.data['message'] ?? 'FCM token updated successfully.',
+          statusCode: response.statusCode,
+        );
+      } else {
+        return ApiResponse.error(
+          'Failed to update FCM token',
+          statusCode: response.statusCode,
+        );
+      }
+    } on DioException catch (e) {
+      return ApiResponse.error(
+        e.response?.data['message'] ?? 'Network error occurred',
+        statusCode: e.response?.statusCode,
+      );
+    } catch (e) {
+      return ApiResponse.error('An unexpected error occurred');
+    }
   }
 }

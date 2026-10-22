@@ -10,6 +10,8 @@ import '../../../chat/presentation/pages/real_chat_screen.dart';
 import '../../../groups/data/providers/group_api_provider.dart';
 import '../../../groups/domain/models/group_model.dart';
 import '../../../groups/presentation/widgets/create_group_dialog.dart';
+import '../../../call/data/models/call_model.dart';
+import '../../../call/data/providers/call_provider.dart';
 
 class ApiUsersScreen extends ConsumerStatefulWidget {
   const ApiUsersScreen({super.key});
@@ -58,6 +60,20 @@ class _ApiUsersScreenState extends ConsumerState<ApiUsersScreen>
     _tabController.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _initiateCall(int partnerId, CallType type) async {
+    final success = await ref.read(callManagerProvider.notifier).startCall(
+      calleePartnerId: partnerId,
+      callType: type,
+    );
+    if (success && mounted) {
+      if (type == CallType.video) {
+        context.push('/video-call');
+      } else {
+        context.push('/audio-call');
+      }
+    }
   }
 
   @override
@@ -128,9 +144,9 @@ class _ApiUsersScreenState extends ConsumerState<ApiUsersScreen>
         children: [
           // const Text('API Users'),
           if (authState.loginData != null)
-         Text(
-  capitalizeFirst(authState.loginData!.userName ?? ''),
-),
+            Text(
+              capitalizeFirst(authState.loginData!.userName),
+            ),
         ],
       ),
       actions: [
@@ -595,17 +611,34 @@ class _ApiUsersScreenState extends ConsumerState<ApiUsersScreen>
                     ],
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppColors.purple1.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.chat_bubble_outline,
-                    color: AppColors.purple1,
-                    size: 20,
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.call_outlined, color: AppColors.purple1, size: 21),
+                      tooltip: 'Audio Call',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => _initiateCall(user.partnerId, CallType.audio),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.videocam_outlined, color: AppColors.purple1, size: 23),
+                      tooltip: 'Video Call',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => _initiateCall(user.partnerId, CallType.video),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.all(7),
+                      decoration: BoxDecoration(
+                        color: AppColors.purple1.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.chat_bubble_outline,
+                        color: AppColors.purple1,
+                        size: 19,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

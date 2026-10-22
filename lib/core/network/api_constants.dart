@@ -28,6 +28,7 @@ class ApiConstants {
   // Endpoints
   static const String login = '/login';
   static const String logout = '/logout';
+  static const String saveFcmToken = '/save_fcm_token';
   static const String users = '/chat/users';
   static const String createChannel = '/chat/channel';
   static const String sendMessage = '/chat/send';

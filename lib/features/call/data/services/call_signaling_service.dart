@@ -37,25 +37,20 @@ class CallSignalingService {
     String? fcmToken,
     String? voipToken,
   }) async {
-    try {
-      final response = await _dio.post(
-        ApiConstants.webrtcDeviceRegister,
-        data: {
-          'jsonrpc': '2.0',
-          'params': {
-            'platform': platform,
-            if (deviceId != null) 'device_id': deviceId,
-            if (fcmToken != null) 'fcm_token': fcmToken,
-            if (voipToken != null) 'voip_token': voipToken,
-          },
-        },
-      );
-      final result = _unwrapResult(response.data);
-      return result != null && result['status'] == 'success';
-    } catch (e) {
-      debugPrint('[Signaling] Failed to register device: $e');
-      return false;
+    if (fcmToken != null && fcmToken.isNotEmpty) {
+      try {
+        final response = await _dio.post(
+          ApiConstants.saveFcmToken,
+          data: {'fcm_token': fcmToken},
+        );
+        final data = response.data;
+        return data is Map && (data['success'] == true || data['status'] == 'success');
+      } catch (e) {
+        debugPrint('[Signaling] Failed to register FCM token with database: $e');
+        return false;
+      }
     }
+    return true;
   }
 
   /// Start a 1-to-1 audio or video call

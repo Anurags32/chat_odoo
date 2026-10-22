@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../call/data/models/call_model.dart';
+import '../../../call/data/providers/call_provider.dart';
 import '../../domain/models/user_model.dart';
 import '../../domain/models/message_model.dart';
 import '../../data/providers/chat_provider.dart';
@@ -21,6 +24,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   late AnimationController _animationController;
+
+  void _initiateCall(CallType type) async {
+    final partnerId = int.tryParse(widget.user.id) ?? 0;
+    final success = await ref.read(callManagerProvider.notifier).startCall(
+      calleePartnerId: partnerId,
+      callType: type,
+    );
+    if (success && mounted) {
+      if (type == CallType.video) {
+        context.push('/video-call');
+      } else {
+        context.push('/audio-call');
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -198,8 +216,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         ],
       ),
       actions: [
-        IconButton(icon: const Icon(Icons.videocam_outlined), onPressed: () {}),
-        IconButton(icon: const Icon(Icons.call_outlined), onPressed: () {}),
+        IconButton(
+          icon: const Icon(Icons.videocam_outlined),
+          tooltip: 'Video Call',
+          onPressed: () => _initiateCall(CallType.video),
+        ),
+        IconButton(
+          icon: const Icon(Icons.call_outlined),
+          tooltip: 'Audio Call',
+          onPressed: () => _initiateCall(CallType.audio),
+        ),
         IconButton(icon: const Icon(Icons.more_vert), onPressed: () {}),
       ],
     );

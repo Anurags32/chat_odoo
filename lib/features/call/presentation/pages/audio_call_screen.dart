@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -13,26 +14,46 @@ class AudioCallScreen extends ConsumerStatefulWidget {
   ConsumerState<AudioCallScreen> createState() => _AudioCallScreenState();
 }
 
-class _AudioCallScreenState extends ConsumerState<AudioCallScreen> with SingleTickerProviderStateMixin {
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
+class _AudioCallScreenState extends ConsumerState<AudioCallScreen>
+    with TickerProviderStateMixin {
+  late AnimationController _rippleController;
+  late Animation<double> _ripple1;
+  late Animation<double> _ripple2;
+  late Animation<double> _ripple3;
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
+    _rippleController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat(reverse: true);
+      duration: const Duration(milliseconds: 2400),
+    )..repeat();
 
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.15).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    _ripple1 = Tween<double>(begin: 0.8, end: 1.45).animate(
+      CurvedAnimation(
+        parent: _rippleController,
+        curve: const Interval(0.0, 0.7, curve: Curves.easeOutCubic),
+      ),
+    );
+
+    _ripple2 = Tween<double>(begin: 0.8, end: 1.3).animate(
+      CurvedAnimation(
+        parent: _rippleController,
+        curve: const Interval(0.2, 0.85, curve: Curves.easeOutCubic),
+      ),
+    );
+
+    _ripple3 = Tween<double>(begin: 0.8, end: 1.15).animate(
+      CurvedAnimation(
+        parent: _rippleController,
+        curve: const Interval(0.4, 1.0, curve: Curves.easeOutCubic),
+      ),
     );
   }
 
   @override
   void dispose() {
-    _pulseController.dispose();
+    _rippleController.dispose();
     super.dispose();
   }
 
@@ -61,114 +82,302 @@ class _AudioCallScreenState extends ConsumerState<AudioCallScreen> with SingleTi
       }
     });
 
-    final partnerName = callState.isIncoming ? (call?.caller.name ?? 'Caller') : (call?.callee.name ?? 'Calling...');
+    final partnerName = callState.isIncoming
+        ? (call?.caller.name ?? 'Caller')
+        : (call?.callee.name ?? 'Calling...');
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
-      body: SafeArea(
-        child: Stack(
-          children: [
-            // Ambient Gradient Background
-            Positioned.fill(
-              child: Container(
-                decoration: const BoxDecoration(
-                  gradient: RadialGradient(
-                    center: Alignment(0, -0.2),
-                    radius: 1.2,
-                    colors: [
-                      Color(0xFF1E293B),
-                      Color(0xFF0F172A),
+      backgroundColor: const Color(0xFF0A0F1D),
+      body: Stack(
+        children: [
+          // 1. Ambient Background Glows
+          Positioned(
+            top: -60,
+            left: -60,
+            child: Container(
+              width: 280,
+              height: 280,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.purple1.withValues(alpha: 0.25),
+              ),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 90, sigmaY: 90),
+                child: const SizedBox.shrink(),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 100,
+            right: -80,
+            child: Container(
+              width: 320,
+              height: 320,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.blueAccent.withValues(alpha: 0.18),
+              ),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 100, sigmaY: 100),
+                child: const SizedBox.shrink(),
+              ),
+            ),
+          ),
+
+          // 2. Safe Area Content
+          SafeArea(
+            child: Column(
+              children: [
+                // Top App Bar
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded,
+                            color: Colors.white70, size: 30),
+                        tooltip: 'Minimize Call',
+                        onPressed: () {
+                          if (context.canPop()) context.pop();
+                        },
+                      ),
+                      // Encryption & Protocol Pill
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.12),
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.lock_rounded, size: 13, color: Colors.greenAccent),
+                            SizedBox(width: 6),
+                            Text(
+                              'End-to-End WebRTC',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.white70,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.4,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 48), // Balance spacing
                     ],
                   ),
                 ),
-              ),
-            ),
 
-            // Main Content
-            Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Spacer(flex: 2),
+                const Spacer(flex: 2),
 
-                  // Pulsing Avatar
-                  ScaleTransition(
-                    scale: _pulseAnimation,
-                    child: Container(
-                      width: 140,
-                      height: 140,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.purple1.withValues(alpha: 0.35),
-                            blurRadius: 35,
-                            spreadRadius: 8,
+                // Center Pulsing Avatar with Multi-layer Sonar Ripple
+                Center(
+                  child: SizedBox(
+                    width: 260,
+                    height: 260,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        // Ripple 1
+                        AnimatedBuilder(
+                          animation: _ripple1,
+                          builder: (context, child) {
+                            return Transform.scale(
+                              scale: _ripple1.value,
+                              child: Container(
+                                width: 160,
+                                height: 160,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: AppColors.purple1.withValues(
+                                      alpha: (1.0 - _rippleController.value) * 0.4,
+                                    ),
+                                    width: 1.5,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        // Ripple 2
+                        AnimatedBuilder(
+                          animation: _ripple2,
+                          builder: (context, child) {
+                            return Transform.scale(
+                              scale: _ripple2.value,
+                              child: Container(
+                                width: 160,
+                                height: 160,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.cyanAccent.withValues(
+                                      alpha: (1.0 - _rippleController.value) * 0.5,
+                                    ),
+                                    width: 1.5,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        // Ripple 3
+                        AnimatedBuilder(
+                          animation: _ripple3,
+                          builder: (context, child) {
+                            return Transform.scale(
+                              scale: _ripple3.value,
+                              child: Container(
+                                width: 160,
+                                height: 160,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: AppColors.purple1.withValues(
+                                    alpha: (1.0 - _rippleController.value) * 0.12,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+
+                        // Center Avatar Card
+                        Container(
+                          width: 150,
+                          height: 150,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Color(0xFF6366F1),
+                                Color(0xFF8B5CF6),
+                                Color(0xFFD946EF),
+                              ],
+                            ),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.35),
+                              width: 3,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF8B5CF6).withValues(alpha: 0.5),
+                                blurRadius: 40,
+                                spreadRadius: 6,
+                              ),
+                            ],
                           ),
-                        ],
-                        gradient: AppColors.buttonGradient,
+                          child: Center(
+                            child: Text(
+                              partnerName.isNotEmpty ? partnerName[0].toUpperCase() : '?',
+                              style: const TextStyle(
+                                fontSize: 62,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 28),
+
+                // Partner Name
+                Text(
+                  partnerName,
+                  style: const TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    letterSpacing: 0.6,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+
+                // Call Status / Duration Indicator
+                if (callState.status == CallState.connected)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: Colors.greenAccent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: Colors.greenAccent.withValues(alpha: 0.35),
+                        width: 1,
                       ),
-                      child: Center(
-                        child: Text(
-                          partnerName.isNotEmpty ? partnerName[0].toUpperCase() : '?',
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Colors.greenAccent,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _formatTimer(callState.durationSeconds),
                           style: const TextStyle(
-                            fontSize: 48,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.greenAccent,
+                            letterSpacing: 1.4,
                           ),
                         ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-
-                  // Partner Name
-                  Text(
-                    partnerName,
-                    style: const TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Status / Duration
-                  if (callState.status == CallState.connected)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.4)),
-                      ),
-                      child: Text(
-                        _formatTimer(callState.durationSeconds),
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.greenAccent,
-                          letterSpacing: 1.2,
+                        const SizedBox(width: 8),
+                        Text(
+                          '• HD',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.greenAccent.withValues(alpha: 0.8),
+                          ),
                         ),
-                      ),
-                    )
-                  else
-                    Text(
+                      ],
+                    ),
+                  )
+                else
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
                       callState.status == CallState.ringing
                           ? (callState.isIncoming ? 'Incoming Audio Call...' : 'Ringing...')
-                          : (callState.status == CallState.connecting ? 'Connecting...' : 'Call Ended'),
+                          : (callState.status == CallState.connecting
+                              ? 'Connecting WebRTC...'
+                              : 'Call Ended'),
                       style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.white.withValues(alpha: 0.7),
+                        fontSize: 15,
+                        color: Colors.white.withValues(alpha: 0.85),
                         fontWeight: FontWeight.w500,
                       ),
                     ),
+                  ),
 
-                  const Spacer(flex: 3),
+                const Spacer(flex: 3),
 
-                  // Call Controls Bar
-                  CallControlsWidget(
+                // Modern Bottom Floating Controls
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 24),
+                  child: CallControlsWidget(
                     isVideo: false,
                     isMuted: callState.isMuted,
                     isSpeakerOn: callState.isSpeakerOn,
@@ -184,12 +393,11 @@ class _AudioCallScreenState extends ConsumerState<AudioCallScreen> with SingleTi
                       }
                     },
                   ),
-                  const SizedBox(height: 40),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

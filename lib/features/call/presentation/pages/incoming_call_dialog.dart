@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -23,140 +24,228 @@ class IncomingCallDialog extends ConsumerWidget {
 
     return Material(
       color: Colors.transparent,
-      child: Center(
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 24),
-          padding: const EdgeInsets.all(28),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E293B),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.6),
-                blurRadius: 30,
-                offset: const Offset(0, 10),
+      child: Stack(
+        children: [
+          // Ambient blurred backdrop
+          Positioned.fill(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.55),
               ),
-            ],
+            ),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Caller Avatar
-              Container(
-                width: 80,
-                height: 80,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: AppColors.buttonGradient,
-                ),
-                child: Center(
-                  child: Text(
-                    callerName.isNotEmpty ? callerName[0].toUpperCase() : '?',
-                    style: const TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
 
-              // Caller Name
-              Text(
-                callerName,
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
+          // Central Incoming Call Modal
+          Center(
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 24),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color(0xFF1E293B),
+                    Color(0xFF0F172A),
+                  ],
                 ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 6),
-
-              // Call Type Label
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    isVideo ? Icons.videocam : Icons.call,
-                    size: 16,
-                    color: Colors.greenAccent,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    isVideo ? 'Incoming Video Call...' : 'Incoming Audio Call...',
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 14,
-                    ),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.16),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.7),
+                    blurRadius: 36,
+                    offset: const Offset(0, 14),
                   ),
                 ],
               ),
-              const SizedBox(height: 32),
-
-              // Action Buttons: Decline & Accept
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Decline Button
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      FloatingActionButton(
-                        heroTag: 'incoming_decline_fab',
-                        backgroundColor: Colors.redAccent,
-                        elevation: 4,
-                        onPressed: () {
-                          callManager.rejectCall();
-                        },
-                        child: const Icon(Icons.call_end, color: Colors.white, size: 28),
+                  // Caller Avatar with Glowing Border
+                  Container(
+                    width: 90,
+                    height: 90,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: AppColors.buttonGradient,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.4),
+                        width: 2.5,
                       ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Decline',
-                        style: TextStyle(color: Colors.white70, fontSize: 13),
-                      ),
-                    ],
-                  ),
-
-                  // Accept Button
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      FloatingActionButton(
-                        heroTag: 'incoming_accept_fab',
-                        backgroundColor: Colors.green,
-                        elevation: 4,
-                        onPressed: () async {
-                          final success = await callManager.acceptCall();
-                          if (success && context.mounted) {
-                            if (isVideo) {
-                              context.push('/video-call');
-                            } else {
-                              context.push('/audio-call');
-                            }
-                          }
-                        },
-                        child: Icon(
-                          isVideo ? Icons.videocam : Icons.call,
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.purple1.withValues(alpha: 0.5),
+                          blurRadius: 28,
+                          spreadRadius: 4,
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: Text(
+                        callerName.isNotEmpty ? callerName[0].toUpperCase() : '?',
+                        style: const TextStyle(
+                          fontSize: 38,
+                          fontWeight: FontWeight.bold,
                           color: Colors.white,
-                          size: 28,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Accept',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Caller Name
+                  Text(
+                    callerName,
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      letterSpacing: 0.4,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Call Type Badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isVideo ? Icons.videocam_rounded : Icons.call_rounded,
+                          size: 16,
+                          color: Colors.greenAccent,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          isVideo ? 'Incoming Video Call...' : 'Incoming Audio Call...',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 36),
+
+                  // Action Buttons: Decline & Accept
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      // Decline Button
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.redAccent.withValues(alpha: 0.4),
+                                  blurRadius: 16,
+                                  spreadRadius: 1,
+                                ),
+                              ],
+                            ),
+                            child: Material(
+                              color: const Color(0xFFFF3B30),
+                              shape: const CircleBorder(),
+                              child: InkWell(
+                                onTap: () => callManager.rejectCall(),
+                                customBorder: const CircleBorder(),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(16),
+                                  child: Icon(Icons.call_end_rounded,
+                                      color: Colors.white, size: 30),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Decline',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      // Accept Button
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.greenAccent.withValues(alpha: 0.4),
+                                  blurRadius: 16,
+                                  spreadRadius: 1,
+                                ),
+                              ],
+                            ),
+                            child: Material(
+                              color: const Color(0xFF34C759),
+                              shape: const CircleBorder(),
+                              child: InkWell(
+                                onTap: () async {
+                                  final success = await callManager.acceptCall();
+                                  if (success && context.mounted) {
+                                    if (isVideo) {
+                                      context.push('/video-call');
+                                    } else {
+                                      context.push('/audio-call');
+                                    }
+                                  }
+                                },
+                                customBorder: const CircleBorder(),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Icon(
+                                    isVideo
+                                        ? Icons.videocam_rounded
+                                        : Icons.call_rounded,
+                                    color: Colors.white,
+                                    size: 30,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Accept',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ],
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

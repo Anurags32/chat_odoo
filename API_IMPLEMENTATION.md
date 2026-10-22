@@ -3,9 +3,11 @@
 ## Overview
 Complete API integration with Dio, including interceptors, colorful logging, and local storage for session management.
 
-## Base URL
+## Base URL & WebSocket URL
 ```
-http://192.168.29.231:8099/api
+Server URL: https://sanitizer-marsupial-delegator.ngrok-free.dev
+Base API URL: https://sanitizer-marsupial-delegator.ngrok-free.dev/api
+WebSocket URL: wss://sanitizer-marsupial-delegator.ngrok-free.dev/websocket
 ```
 
 ## Dependencies Added

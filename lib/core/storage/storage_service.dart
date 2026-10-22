@@ -21,6 +21,17 @@ class StorageService {
   static const String _userIdKey = 'user_id';
   static const String _userNameKey = 'user_name';
   static const String _expiryTimeKey = 'expiry_time';
+  static const String _fcmTokenKey = 'fcm_device_token';
+
+  // Save FCM Token
+  Future<bool> saveFcmToken(String token) async {
+    return await _preferences?.setString(_fcmTokenKey, token) ?? false;
+  }
+
+  // Get FCM Token
+  Future<String?> getFcmToken() async {
+    return _preferences?.getString(_fcmTokenKey);
+  }
 
   // Save token
   Future<bool> saveToken(String token) async {

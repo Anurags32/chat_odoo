@@ -74,6 +74,7 @@ class WebSocketService {
       }
       // Odoo requires Origin header — without it returns 400 "missing header: origin"
       headers['Origin'] = ApiConstants.wsOrigin;
+      headers['ngrok-skip-browser-warning'] = 'true';
 
       // Ensure URL uses ws:// or wss:// scheme
       String wsEndpoint = _wsBaseUrl;
@@ -201,6 +202,7 @@ class WebSocketService {
       req.headers.set('Sec-WebSocket-Key', 'dGhlIHNhbXBsZSBub25jZQ==');
       req.headers.set('Sec-WebSocket-Version', '13');
       req.headers.set('Origin', ApiConstants.wsOrigin);
+      req.headers.set('ngrok-skip-browser-warning', 'true');
       if (token != null && token.isNotEmpty) {
         req.headers.set('Cookie', 'session_id=$token');
       }
