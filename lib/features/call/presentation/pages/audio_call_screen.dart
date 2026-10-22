@@ -8,7 +8,8 @@ import '../../data/providers/call_provider.dart';
 import '../widgets/call_controls_widget.dart';
 
 class AudioCallScreen extends ConsumerStatefulWidget {
-  const AudioCallScreen({super.key});
+  final Map<String, dynamic>? extra;
+  const AudioCallScreen({super.key, this.extra});
 
   @override
   ConsumerState<AudioCallScreen> createState() => _AudioCallScreenState();
@@ -71,20 +72,22 @@ class _AudioCallScreenState extends ConsumerState<AudioCallScreen>
 
     // Pop screen when call ends or is cancelled/rejected
     ref.listen<CallStateData>(callManagerProvider, (prev, next) {
-      if (next.status == CallState.ended ||
-          next.status == CallState.rejected ||
-          next.status == CallState.cancelled ||
-          next.status == CallState.missed ||
-          next.status == CallState.idle) {
-        if (mounted && context.canPop()) {
-          context.pop();
+      if (prev != null && prev.status != CallState.idle) {
+        if (next.status == CallState.ended ||
+            next.status == CallState.rejected ||
+            next.status == CallState.cancelled ||
+            next.status == CallState.missed) {
+          if (mounted && context.canPop()) {
+            context.pop();
+          }
         }
       }
     });
 
+    final passedName = widget.extra?['callee_name'] as String?;
     final partnerName = callState.isIncoming
         ? (call?.caller.name ?? 'Caller')
-        : (call?.callee.name ?? 'Calling...');
+        : (call?.callee.name ?? passedName ?? 'Calling...');
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0F1D),
@@ -390,6 +393,9 @@ class _AudioCallScreenState extends ConsumerState<AudioCallScreen>
                         callManager.cancelCall();
                       } else {
                         callManager.endCall();
+                      }
+                      if (mounted && context.canPop()) {
+                        context.pop();
                       }
                     },
                   ),

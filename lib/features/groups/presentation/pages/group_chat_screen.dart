@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../core/router/app_router.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../call/data/models/call_model.dart';
 import '../../domain/models/group_model.dart';
 import '../../data/providers/group_api_provider.dart';
 import '../widgets/group_message_bubble.dart';
@@ -148,8 +151,36 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen>
         ],
       ),
       actions: [
-        IconButton(icon: const Icon(Icons.videocam_outlined), onPressed: () {}),
-        IconButton(icon: const Icon(Icons.call_outlined), onPressed: () {}),
+        IconButton(
+          icon: const Icon(Icons.videocam_outlined),
+          tooltip: 'Group Video Call',
+          onPressed: () {
+            context.push(
+              AppRouter.groupCall,
+              extra: {
+                'channel_name': widget.group.name,
+                'call_type': CallType.video,
+                'members':
+                    widget.group.members?.map((m) => m.name).toList() ?? [],
+              },
+            );
+          },
+        ),
+        IconButton(
+          icon: const Icon(Icons.call_outlined),
+          tooltip: 'Group Audio Call',
+          onPressed: () {
+            context.push(
+              AppRouter.groupCall,
+              extra: {
+                'channel_name': widget.group.name,
+                'call_type': CallType.audio,
+                'members':
+                    widget.group.members?.map((m) => m.name).toList() ?? [],
+              },
+            );
+          },
+        ),
         PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert),
           onSelected: (value) {
@@ -358,6 +389,9 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen>
                 onTap: () async {
                   Navigator.of(context).pop(); // Close dialog
                   
+                  final navigator = Navigator.of(context);
+                  final messenger = ScaffoldMessenger.of(context);
+
                   // Show loading
                   showDialog(
                     context: context,
@@ -373,10 +407,10 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen>
                   final success = await ref.read(groupApiProvider.notifier).leaveGroup(widget.group.channelId);
 
                   if (mounted) {
-                    Navigator.of(context).pop(); // Close loading
-                    Navigator.of(context).pop(); // Close chat screen
+                    navigator.pop(); // Close loading
+                    navigator.pop(); // Close chat screen
 
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    messenger.showSnackBar(
                       SnackBar(
                         content: Text(success ? 'You left the group' : 'Failed to leave group'),
                         backgroundColor: success ? AppColors.purple1 : AppColors.error,

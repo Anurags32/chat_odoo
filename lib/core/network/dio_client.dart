@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:pretty_dio_logger/pretty_dio_logger.dart';
 import 'api_constants.dart';
 import 'auth_interceptor.dart';
@@ -35,7 +36,7 @@ class DioClient {
         maxWidth: 90,
         logPrint: (object) {
           // Colorful logging
-          print('\x1B[36m$object\x1B[0m'); // Cyan color
+          debugPrint('\x1B[36m$object\x1B[0m'); // Cyan color
         },
       ),
     );
@@ -47,6 +48,10 @@ class DioClient {
   }
 
   Dio get dio => _dio;
+
+  void updateBaseUrl(String newBaseUrl) {
+    _dio.options.baseUrl = newBaseUrl;
+  }
 
   // GET request
   Future<Response> get(

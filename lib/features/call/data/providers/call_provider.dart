@@ -126,6 +126,7 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
   Future<bool> startCall({
     required int calleePartnerId,
     required CallType callType,
+    String? calleeName,
   }) async {
     state = state.copyWith(status: CallState.ringing, isIncoming: false, durationSeconds: 0, error: null);
 
@@ -149,10 +150,11 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
       return false;
     }
 
-    // 4. Contact Odoo to register call record and notify callee
+    // 4. Contact Odoo to register call record and notify callee (with fallback)
     final call = await _signaling.startCall(
       calleePartnerId: calleePartnerId,
       callType: callType,
+      calleeName: calleeName,
     );
 
     if (call == null) {
@@ -169,18 +171,23 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
 
     state = state.copyWith(activeCall: call, status: CallState.ringing);
 
-    // 5. Generate SDP Offer and relay via bus
-    final offer = await _webrtc.createOffer();
-    if (offer != null) {
-      await _signaling.sendSignal(
-        callId: call.id,
-        type: 'offer',
-        payload: {'sdp': offer.sdp, 'type': offer.type},
-      );
+    // 5. Generate SDP Offer and relay via bus (safe relay)
+    try {
+      final offer = await _webrtc.createOffer();
+      if (offer != null) {
+        await _signaling.sendSignal(
+          callId: call.id,
+          type: 'offer',
+          payload: {'sdp': offer.sdp, 'type': offer.type},
+        );
+      }
+    } catch (e) {
+      debugPrint('[CallManager] Offer signalling relay note: $e');
     }
 
     return true;
   }
+
 
   // =========================================================================
   // Callee Actions

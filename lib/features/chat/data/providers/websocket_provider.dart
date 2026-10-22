@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/network/websocket_service.dart';
 import '../../domain/models/channel_model.dart';
 import '../../../call/data/providers/call_provider.dart';
+import 'chat_api_provider.dart';
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -35,6 +37,7 @@ class WebSocketState {
 class WebSocketNotifier extends StateNotifier<WebSocketState> {
   final Ref? _ref;
   final WebSocketService _ws = WebSocketService();
+  Timer? _typingTimer;
 
   WebSocketNotifier([this._ref]) : super(const WebSocketState()) {
     _ws.onStatusChange = (s) {
@@ -54,6 +57,7 @@ class WebSocketNotifier extends StateNotifier<WebSocketState> {
   }
 
   Future<void> disconnect() async {
+    _typingTimer?.cancel();
     await _ws.disconnect();
     state = const WebSocketState();
   }
@@ -70,7 +74,7 @@ class WebSocketNotifier extends StateNotifier<WebSocketState> {
         if (message == null) continue;
 
         final type = message['type'] as String?;
-        print('[WS] Event type: $type');
+        debugPrint('[WS] Event type: $type');
 
         if (type == 'webrtc_call') {
           final payload = message['payload'] as Map<String, dynamic>?;
@@ -80,21 +84,33 @@ class WebSocketNotifier extends StateNotifier<WebSocketState> {
             ref.read(callManagerProvider.notifier).handleBusEvent(eventName, payload);
           }
         } else if (type == 'discuss.channel/new_message') {
-          // Real-time new message — main event we care about
+          // Real-time new message
           _processNewMessage(message['payload'] as Map<String, dynamic>?);
         } else if (type == 'mail.message/insert' || type == 'mail.record/insert') {
-          // Fallback: some Odoo versions send messages here
+          // Fallback message event
           _processInsertEvent(message['payload'] as Map<String, dynamic>?);
+        } else if (type != null && type.contains('typing')) {
+          // Typing indicator event
+          _processTypingEvent(message['payload'] as Map<String, dynamic>?);
         }
-        // discuss.channel.member typing events — ignored intentionally
       } catch (e) {
-        print('[WS] Error processing event: $e | event: $event');
+        debugPrint('[WS] Error processing event: $e | event: $event');
       }
     }
   }
 
+  void _processTypingEvent(Map<String, dynamic>? payload) {
+    if (_ref == null) return;
+    _ref.read(chatApiProvider.notifier).setTyping(true);
+    _typingTimer?.cancel();
+    _typingTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) {
+        _ref.read(chatApiProvider.notifier).setTyping(false);
+      }
+    });
+  }
+
   /// Handles: discuss.channel/new_message
-  /// payload.data['mail.message'] contains the actual message list
   void _processNewMessage(Map<String, dynamic>? payload) {
     if (payload == null) return;
 
@@ -108,14 +124,16 @@ class WebSocketNotifier extends StateNotifier<WebSocketState> {
     for (final m in mailMessages) {
       try {
         final msg = _parseMailMessage(m as Map<String, dynamic>);
-        if (msg != null) newMsgs.add(msg);
+        if (msg != null) {
+          newMsgs.add(msg);
+          _ref?.read(chatApiProvider.notifier).addIncomingMessage(msg);
+        }
       } catch (e) {
-        print('[WS] Failed to parse new_message: $e');
+        debugPrint('[WS] Failed to parse new_message: $e');
       }
     }
 
     if (newMsgs.isNotEmpty && mounted) {
-      print('[WS] Adding ${newMsgs.length} new message(s) to state.');
       state = state.copyWith(
         liveMessages: [...state.liveMessages, ...newMsgs],
       );
@@ -125,14 +143,16 @@ class WebSocketNotifier extends StateNotifier<WebSocketState> {
   void _processInsertEvent(Map<String, dynamic>? payload) {
     if (payload == null) return;
 
-    // mail.message/insert carries messages directly
     final mailMessages = payload['mail.message'] as List<dynamic>?;
     if (mailMessages != null) {
       final newMsgs = <ChatMessageModel>[];
       for (final m in mailMessages) {
         try {
           final msg = _parseMailMessage(m as Map<String, dynamic>);
-          if (msg != null) newMsgs.add(msg);
+          if (msg != null) {
+            newMsgs.add(msg);
+            _ref?.read(chatApiProvider.notifier).addIncomingMessage(msg);
+          }
         } catch (e) {
           debugPrint('[WS] Failed to parse mail.message: $e');
         }
@@ -143,8 +163,6 @@ class WebSocketNotifier extends StateNotifier<WebSocketState> {
         );
       }
     }
-
-    // mail.record/insert may carry discuss.channel.member typing info — ignore for now
   }
 
   ChatMessageModel? _parseMailMessage(Map<String, dynamic> m) {
@@ -152,10 +170,8 @@ class WebSocketNotifier extends StateNotifier<WebSocketState> {
     final body = m['body'] as String? ?? '';
     final date = m['date'] as String? ?? DateTime.now().toIso8601String();
 
-    // author is {"id": 3, "type": "partner"} — name not always present
     final authorRaw = m['author'] as Map<String, dynamic>?;
     final authorId = authorRaw?['id'] as int? ?? 0;
-    // name may come from res.partner lookup; fallback to id string
     final authorName = authorRaw?['name'] as String? ?? 'User $authorId';
 
     if (id == null) return null;
@@ -170,6 +186,7 @@ class WebSocketNotifier extends StateNotifier<WebSocketState> {
 
   @override
   void dispose() {
+    _typingTimer?.cancel();
     _ws.disconnect();
     super.dispose();
   }

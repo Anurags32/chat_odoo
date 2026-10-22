@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import '../../../../core/network/dio_client.dart';
 import '../../../../core/network/api_constants.dart';
 import '../../../../core/network/api_response.dart';
@@ -14,8 +15,28 @@ class AuthApiService {
   Future<ApiResponse<LoginResponse>> login({
     required String login,
     required String password,
+    String? serverUrl,
+    String? database,
   }) async {
     try {
+      // 1. Update active config if server or database supplied
+      if (serverUrl != null && serverUrl.trim().isNotEmpty) {
+        ApiConstants.updateConfig(
+          serverUrl: serverUrl,
+          database: database,
+        );
+        await _storageService.saveServerConfig(
+          serverUrl: ApiConstants.serverUrl,
+          database: ApiConstants.database,
+        );
+      } else if (database != null && database.trim().isNotEmpty) {
+        ApiConstants.updateConfig(database: database);
+        await _storageService.saveServerConfig(
+          serverUrl: ApiConstants.serverUrl,
+          database: ApiConstants.database,
+        );
+      }
+
       final response = await _dioClient.post(
         ApiConstants.login,
         data: {'login': login, 'password': password},
@@ -24,8 +45,9 @@ class AuthApiService {
       if (response.statusCode == 200) {
         final loginResponse = LoginResponse.fromJson(response.data);
 
-        // Save token and user data
+        // Save token and user credentials/data securely
         await _storageService.saveToken(loginResponse.sessionToken);
+        await _storageService.saveCredentials(login: login, password: password);
         await _storageService.saveUserData(
           userId: loginResponse.userId,
           userName: loginResponse.userName,
@@ -36,20 +58,21 @@ class AuthApiService {
         await authenticateOdooSession(
           login: login,
           password: password,
+          db: ApiConstants.database,
         );
 
         // Step 2: Sync FCM token with database
         final fcmToken = await _storageService.getFcmToken();
         if (fcmToken != null && fcmToken.isNotEmpty) {
           try {
-            print('\x1B[32m📤 [Auth] Syncing FCM token to /api/save_fcm_token after login...\x1B[0m');
+            debugPrint('📤 [Auth] Syncing FCM token to /api/save_fcm_token after login...');
             final fcmResp = await _dioClient.post(
               ApiConstants.saveFcmToken,
               data: {'fcm_token': fcmToken},
             );
-            print('\x1B[32m📥 [Auth] FCM token sync response: ${fcmResp.data}\x1B[0m');
+            debugPrint('📥 [Auth] FCM token sync response: ${fcmResp.data}');
           } catch (e) {
-            print('\x1B[33m⚠️ [Auth] Could not sync FCM token on login: $e\x1B[0m');
+            debugPrint('⚠️ [Auth] Could not sync FCM token on login: $e');
           }
         }
 
@@ -70,7 +93,7 @@ class AuthApiService {
         statusCode: e.response?.statusCode,
       );
     } catch (e) {
-      return ApiResponse.error('An unexpected error occurred');
+      return ApiResponse.error('An unexpected error occurred: $e');
     }
   }
 
@@ -79,10 +102,9 @@ class AuthApiService {
     try {
       final response = await _dioClient.post(ApiConstants.logout);
 
-      if (response.statusCode == 200) {
-        // Clear local storage
-        await _storageService.clearAll();
+      await _storageService.clearAll();
 
+      if (response.statusCode == 200) {
         return ApiResponse.success(
           null,
           message: 'Logout successful',
@@ -95,22 +117,18 @@ class AuthApiService {
         );
       }
     } on DioException catch (e) {
-      // Clear local storage even if API fails
       await _storageService.clearAll();
-
       return ApiResponse.error(
         e.response?.data['message'] ?? 'Network error occurred',
         statusCode: e.response?.statusCode,
       );
     } catch (e) {
-      // Clear local storage even if error occurs
       await _storageService.clearAll();
-
       return ApiResponse.error('An unexpected error occurred');
     }
   }
 
-  // Get Users
+  // Get Users (with automatic offline cache)
   Future<ApiResponse<UsersResponse>> getUsers() async {
     try {
       final response = await _dioClient.get(ApiConstants.users);
@@ -118,25 +136,44 @@ class AuthApiService {
       if (response.statusCode == 200) {
         final usersResponse = UsersResponse.fromJson(response.data);
 
+        // Cache users in local storage for offline use
+        if (response.data is Map && response.data['users'] is List) {
+          await _storageService.cacheContacts(response.data['users'] as List);
+        }
+
         return ApiResponse.success(
           usersResponse,
           message: 'Users fetched successfully',
           statusCode: response.statusCode,
         );
       } else {
-        return ApiResponse.error(
-          'Failed to fetch users',
-          statusCode: response.statusCode,
-        );
+        return await _getCachedUsersFallback('Failed to fetch users');
       }
     } on DioException catch (e) {
-      return ApiResponse.error(
+      return await _getCachedUsersFallback(
         e.response?.data['message'] ?? 'Network error occurred',
         statusCode: e.response?.statusCode,
       );
     } catch (e) {
-      return ApiResponse.error('An unexpected error occurred');
+      return await _getCachedUsersFallback('An unexpected error occurred');
     }
+  }
+
+  Future<ApiResponse<UsersResponse>> _getCachedUsersFallback(
+    String errorMsg, {
+    int? statusCode,
+  }) async {
+    final cached = await _storageService.getCachedContacts();
+    if (cached != null && cached.isNotEmpty) {
+      final users = cached
+          .map((u) => ApiUserModel.fromJson(u as Map<String, dynamic>))
+          .toList();
+      return ApiResponse.success(
+        UsersResponse(success: true, users: users),
+        message: 'Loaded from offline cache',
+      );
+    }
+    return ApiResponse.error(errorMsg, statusCode: statusCode);
   }
 
   /// Step 1: Authenticate with Odoo official session (/web/session/authenticate)
@@ -144,15 +181,16 @@ class AuthApiService {
   Future<String?> authenticateOdooSession({
     required String login,
     required String password,
-    String db = ApiConstants.database,
+    String? db,
   }) async {
     try {
+      final dbToUse = db ?? ApiConstants.database;
       final response = await _dioClient.post(
         ApiConstants.sessionAuthenticate,
         data: {
           'jsonrpc': '2.0',
           'params': {
-            'db': db,
+            'db': dbToUse,
             'login': login,
             'password': password,
           },
@@ -183,15 +221,15 @@ class AuthApiService {
 
       if (sessionId != null && sessionId.isNotEmpty) {
         await _storageService.saveSessionCookie(sessionId);
-        print('\x1B[32m[AUTH] Odoo session_id cookie saved: $sessionId\x1B[0m');
+        debugPrint('[AUTH] Odoo session_id cookie saved: $sessionId');
         return sessionId;
       } else {
-        print(
-          '\x1B[33m[AUTH] Warning: session_id could not be extracted from authenticate response\x1B[0m',
+        debugPrint(
+          '[AUTH] Warning: session_id could not be extracted from authenticate response',
         );
       }
     } catch (e) {
-      print('\x1B[31m[AUTH] Error during Odoo session authentication: $e\x1B[0m');
+      debugPrint('[AUTH] Error during Odoo session authentication: $e');
     }
     return null;
   }

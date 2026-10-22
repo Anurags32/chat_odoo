@@ -328,8 +328,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                                   },
                                   loadingBuilder:
                                       (context, child, loadingProgress) {
-                                        if (loadingProgress == null)
+                                        if (loadingProgress == null) {
                                           return child;
+                                        }
                                         return Center(
                                           child: Text(
                                             widget.user.avatar,

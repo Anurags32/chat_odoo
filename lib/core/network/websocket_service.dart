@@ -16,7 +16,7 @@ typedef OnStatusCallback = void Function(WsStatus status);
 typedef OnErrorCallback = void Function(String error);
 
 class WebSocketService {
-  static const String _wsBaseUrl = ApiConstants.wsUrl;
+  String get _wsBaseUrl => ApiConstants.wsUrl;
 
   WebSocketChannel? _channel;
   StreamSubscription? _subscription;
@@ -68,9 +68,9 @@ class WebSocketService {
       final headers = <String, dynamic>{};
       if (cookieToUse != null && cookieToUse.isNotEmpty) {
         headers['Cookie'] = 'session_id=$cookieToUse';
-        print('[WS] Attaching session cookie: session_id=$cookieToUse');
+        debugPrint('[WS] Attaching session cookie: session_id=$cookieToUse');
       } else {
-        print('[WS] Warning: no session cookie/token — connecting without cookie.');
+        debugPrint('[WS] Warning: no session cookie/token — connecting without cookie.');
       }
       // Odoo requires Origin header — without it returns 400 "missing header: origin"
       headers['Origin'] = ApiConstants.wsOrigin;
@@ -123,11 +123,11 @@ class WebSocketService {
 
     // Pretty-print the outgoing subscribe body
     final prettyPayload = const JsonEncoder.withIndent('  ').convert(body);
-    print('┌─────────────────────────────────────────');
-    print('│ [WS] ➤ SEND BODY');
-    print('│ URL : $_wsBaseUrl');
-    prettyPayload.split('\n').forEach((line) => print('│ $line'));
-    print('└─────────────────────────────────────────');
+    debugPrint('┌─────────────────────────────────────────');
+    debugPrint('│ [WS] ➤ SEND BODY');
+    debugPrint('│ URL : $_wsBaseUrl');
+    prettyPayload.split('\n').forEach((line) => debugPrint('│ $line'));
+    debugPrint('└─────────────────────────────────────────');
 
     _channel?.sink.add(payload);
   }
@@ -210,19 +210,19 @@ class WebSocketService {
       final resp = await req.close();
       final body = await resp.transform(const Utf8Decoder()).join();
 
-      print('┌─────────────────────────────────────────');
-      print('│ [WS DEBUG] Raw server response');
-      print('│ Status : ${resp.statusCode} ${resp.reasonPhrase}');
-      print('│ Headers:');
+      debugPrint('┌─────────────────────────────────────────');
+      debugPrint('│ [WS DEBUG] Raw server response');
+      debugPrint('│ Status : ${resp.statusCode} ${resp.reasonPhrase}');
+      debugPrint('│ Headers:');
       resp.headers.forEach((name, values) {
-        print('│   $name: ${values.join(', ')}');
+        debugPrint('│   $name: ${values.join(', ')}');
       });
-      print('│ Body   : $body');
-      print('└─────────────────────────────────────────');
+      debugPrint('│ Body   : $body');
+      debugPrint('└─────────────────────────────────────────');
 
       client.close();
     } catch (e) {
-      print('[WS DEBUG] Could not fetch debug response: $e');
+      debugPrint('[WS DEBUG] Could not fetch debug response: $e');
     }
   }
 }

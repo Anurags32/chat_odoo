@@ -42,12 +42,19 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   AuthNotifier(this._authApiService) : super(AuthState());
 
-  Future<void> login(String login, String password) async {
+  Future<void> login(
+    String login,
+    String password, {
+    String? serverUrl,
+    String? database,
+  }) async {
     state = state.copyWith(isLoading: true, error: null);
 
     final response = await _authApiService.login(
       login: login,
       password: password,
+      serverUrl: serverUrl,
+      database: database,
     );
 
     if (response.success && response.data != null) {

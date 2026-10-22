@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import '../storage/storage_service.dart';
 
 class AuthInterceptor extends Interceptor {
@@ -19,7 +20,7 @@ class AuthInterceptor extends Interceptor {
       options.headers['Cookie'] = 'session_id=$sessionCookie';
     }
 
-    print(
+    debugPrint(
       '\x1B[32m🚀 REQUEST[${options.method}] => PATH: ${options.path}\x1B[0m',
     );
     super.onRequest(options, handler);
@@ -27,7 +28,7 @@ class AuthInterceptor extends Interceptor {
 
   @override
   void onResponse(Response response, ResponseInterceptorHandler handler) {
-    print(
+    debugPrint(
       '\x1B[32m✅ RESPONSE[${response.statusCode}] => PATH: ${response.requestOptions.path}\x1B[0m',
     );
     super.onResponse(response, handler);
@@ -35,7 +36,7 @@ class AuthInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
-    print(
+    debugPrint(
       '\x1B[31m❌ ERROR[${err.response?.statusCode}] => PATH: ${err.requestOptions.path}\x1B[0m',
     );
     super.onError(err, handler);

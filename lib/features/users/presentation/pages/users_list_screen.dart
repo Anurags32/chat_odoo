@@ -425,41 +425,7 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen>
     );
   }
 
- Widget _buildTabBar() {
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        gradient: AppColors.buttonGradient,
-        borderRadius: BorderRadius.circular(30),
-      ),
-      child: TabBar(
-        controller: _tabController,
-        indicator: BoxDecoration(
-          color: AppColors.white,
-          borderRadius: BorderRadius.circular(26),
-        ),
-        indicatorSize: TabBarIndicatorSize.tab,
-        dividerColor: Colors.transparent,
-        labelColor: AppColors.purple1,
-        unselectedLabelColor: AppColors.white,
-        labelStyle: const TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w600,
-        ),
-        tabs: const [
-          Tab(
-            icon: Icon(Icons.person, size: 20),
-            text: 'Users',
-          ),
-          Tab(
-            icon: Icon(Icons.group, size: 20),
-            text: 'Groups',
-          ),
-        ],
-      ),
-    );
-  }
+
   Widget _buildOnlineUsersSection(List<UserModel> users) {
     final onlineUsers = users.where((user) => user.isOnline).toList();
 

@@ -117,7 +117,7 @@ class _UsersListScreenState extends State<UsersListScreen> {
 
     return Chip(
       label: Text(label, style: const TextStyle(fontSize: 12)),
-      backgroundColor: color.withOpacity(0.2),
+      backgroundColor: color.withValues(alpha: 0.2),
       side: BorderSide(color: color),
       padding: const EdgeInsets.symmetric(horizontal: 4),
     );

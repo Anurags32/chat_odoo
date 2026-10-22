@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:nspl_odoo/core/router/app_router.dart';
-import '../../../../core/theme/app_colors.dart';
+import '../../../../core/network/api_constants.dart';
+import '../../../../core/router/app_router.dart';
 import '../../../../core/storage/storage_service.dart';
+import '../../../../core/theme/app_colors.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -12,270 +13,146 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen>
-    with TickerProviderStateMixin {
-  late AnimationController _logoController;
-  late AnimationController _textController;
-  late Animation<double> _logoScaleAnimation;
-  late Animation<double> _logoRotateAnimation;
-  late Animation<double> _logoFadeAnimation;
-  late Animation<double> _textFadeAnimation;
-  late Animation<Offset> _textSlideAnimation;
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
 
-    // Logo animations
-    _logoController = AnimationController(
-      duration: const Duration(milliseconds: 1500),
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 1400),
       vsync: this,
     );
 
-    _logoScaleAnimation = Tween<double>(begin: 0.3, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _logoController,
-        curve: const Interval(0.0, 0.6, curve: Curves.elasticOut),
-      ),
+    _scaleAnimation = Tween<double>(begin: 0.7, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
     );
 
-    _logoRotateAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _logoController,
-        curve: const Interval(0.0, 0.6, curve: Curves.easeOut),
-      ),
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: const Interval(0.0, 0.7, curve: Curves.easeIn)),
     );
 
-    _logoFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _logoController,
-        curve: const Interval(0.0, 0.4, curve: Curves.easeIn),
-      ),
-    );
+    _controller.forward();
+    _checkAppEntry();
+  }
 
-    // Text animations
-    _textController = AnimationController(
-      duration: const Duration(milliseconds: 800),
-      vsync: this,
-    );
+  Future<void> _checkAppEntry() async {
+    // 1. Initialize server config if previously saved
+    final savedServer = await StorageService.instance.getServerUrl();
+    final savedDb = await StorageService.instance.getDatabase();
+    if (savedServer != null || savedDb != null) {
+      ApiConstants.updateConfig(
+        serverUrl: savedServer,
+        database: savedDb,
+      );
+    }
 
-    _textFadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _textController, curve: Curves.easeIn));
+    // Wait for animation
+    await Future.delayed(const Duration(milliseconds: 2000));
+    if (!mounted) return;
 
-    _textSlideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.5),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _textController, curve: Curves.easeOut));
+    // 2. Check onboarding
+    final onboardingDone = await StorageService.instance.isOnboardingComplete();
+    if (!mounted) return;
+    if (!onboardingDone) {
+      context.go(AppRouter.onboarding);
+      return;
+    }
 
-    // Start animations
-    _logoController.forward();
-
-    // Start text animation after logo
-    Future.delayed(const Duration(milliseconds: 800), () {
-      if (mounted) {
-        _textController.forward();
-      }
-    });
-
-    // Navigate to login after 3 seconds
-    Future.delayed(const Duration(seconds: 3), () async {
-      if (mounted) {
-        // Check if user is already logged in
-        final isLoggedIn = await StorageService.instance.isLoggedIn();
-        
-        if (isLoggedIn) {
-          // User has valid session, go to API users screen
-          context.go(AppRouter.apiUsers);
-        } else {
-          // No session, go to login
-          context.go(AppRouter.login);
-        }
-      }
-    });
+    // 3. Check session login
+    final isLoggedIn = await StorageService.instance.isLoggedIn();
+    if (!mounted) return;
+    if (isLoggedIn) {
+      context.go(AppRouter.home);
+    } else {
+      context.go(AppRouter.login);
+    }
   }
 
   @override
   void dispose() {
-    _logoController.dispose();
-    _textController.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Animated Logo
-              Image.asset(
-                'assets/logo.png',
-                width: 250,
-                height: 250,
-                errorBuilder: (context, error, stackTrace) {
-                  // Fallback to icon if image not found
-                  return const Icon(
-                    Icons.chat_bubble_rounded,
-                    size: 80,
-                    color: AppColors.purple1,
-                  );
-                },
-              ),
-              // AnimatedBuilder(
-              //   animation: _logoController,
-              //   builder: (context, child) {
-              //     return Transform.scale(
-              //       scale: _logoScaleAnimation.value,
-              //       child: Transform.rotate(
-              //         angle: _logoRotateAnimation.value * 0.5,
-              //         child: FadeTransition(
-              //           opacity: _logoFadeAnimation,
-              //           child: Container(
-              //             padding: const EdgeInsets.all(30),
-              //             decoration: BoxDecoration(
-              //               color: AppColors.white,
-              //               shape: BoxShape.circle,
-              //               boxShadow: [
-              //                 BoxShadow(
-              //                   color: AppColors.purple1.withValues(alpha: 0.5),
-              //                   blurRadius: 40,
-              //                   spreadRadius: 15,
-              //                 ),
-              //                 BoxShadow(
-              //                   color: AppColors.purple1.withValues(alpha: 0.4),
-              //                   blurRadius: 60,
-              //                   spreadRadius: 20,
-              //                 ),
-              //               ],
-              //             ),
-              //             child: _buildLogo(),
-              //           ),
-              //         ),
-              //       ),
-              //     );
-              //   },
-              // ),
-              const SizedBox(height: 40),
-
-              // Animated Text
-              FadeTransition(
-                opacity: _textFadeAnimation,
-                child: SlideTransition(
-                  position: _textSlideAnimation,
-                  child: Column(
-                    children: [
-                      // Norbit Text
-                      // Container(
-                      //   padding: const EdgeInsets.symmetric(
-                      //     horizontal: 32,
-                      //     vertical: 12,
-                      //   ),
-                      //   decoration: BoxDecoration(
-                      //     gradient: AppColors.buttonGradient,
-                      //     borderRadius: BorderRadius.circular(25),
-                      //     boxShadow: [
-                      //       BoxShadow(
-                      //         color: AppColors.purple1.withValues(alpha: 0.4),
-                      //         blurRadius: 20,
-                      //         spreadRadius: 5,
-                      //       ),
-                      //     ],
-                      //   ),
-                      //   child: const Text(
-                      //     'Norbit',
-                      //     style: TextStyle(
-                      //       fontSize: 52,
-                      //       fontWeight: FontWeight.bold,
-                      //       color: AppColors.white,
-                      //       letterSpacing: 4,
-                      //     ),
-                      //   ),
-                      // ),
-                      // const SizedBox(height: 20),
-
-                      // Tagline
-                      // Container(
-                      //   padding: const EdgeInsets.symmetric(
-                      //     horizontal: 20,
-                      //     vertical: 8,
-                      //   ),
-                      //   decoration: BoxDecoration(
-                      //     border: Border.all(
-                      //       color: AppColors.purple1.withValues(alpha: 0.6),
-                      //       width: 2,
-                      //     ),
-                      //     borderRadius: BorderRadius.circular(20),
-                      //   ),
-                      //   child: const Text(
-                      //     'Connect • Collaborate • Communicate',
-                      //     style: TextStyle(
-                      //       fontSize: 14,
-                      //       color: AppColors.white,
-                      //       fontWeight: FontWeight.w500,
-                      //       letterSpacing: 1.5,
-                      //     ),
-                      //   ),
-                      // ),
+      backgroundColor: isDark ? AppColors.darkBg : AppColors.lightBg,
+      body: Center(
+        child: FadeTransition(
+          opacity: _fadeAnimation,
+          child: ScaleTransition(
+            scale: _scaleAnimation,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(32),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.4),
+                        blurRadius: 36,
+                        offset: const Offset(0, 12),
+                      ),
                     ],
                   ),
-                ),
-              ),
-
-              const SizedBox(height: 60),
-
-              // Loading Indicator
-              FadeTransition(
-                opacity: _textFadeAnimation,
-                child: Column(
-                  children: [
-                    const SizedBox(
-                      width: 40,
-                      height: 40,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 3,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          AppColors.white,
-                        ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Image.asset(
+                    'assets/logo.png',
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      color: AppColors.primary,
+                      child: const Icon(
+                        Icons.chat_bubble_rounded,
+                        size: 60,
+                        color: Colors.white,
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Loading...',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: AppColors.white,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 28),
+                Text(
+                  'Norbit',
+                  style: TextStyle(
+                    fontSize: 34,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.5,
+                    color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Connect • Communicate • Collaborate',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.3,
+                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                  ),
+                ),
+                const SizedBox(height: 48),
+                const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildLogo() {
-    // Try to load image, fallback to icon
-    return Image.asset(
-      'assets/logo.png',
-      width: 80,
-      height: 80,
-      errorBuilder: (context, error, stackTrace) {
-        // Fallback to icon if image not found
-        return const Icon(
-          Icons.chat_bubble_rounded,
-          size: 80,
-          color: AppColors.purple1,
-        );
-      },
     );
   }
 }

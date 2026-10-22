@@ -132,18 +132,14 @@ class PushNotificationService {
       // 4. Retrieve FCM push token and register with backend
       final token = await messaging.getToken();
       if (token != null) {
-        print('\x1B[32m═══════════════════════════════════════════════════════════════\x1B[0m');
-        print('\x1B[32m🔥 [FCM TOKEN] : $token\x1B[0m');
-        print('\x1B[32m═══════════════════════════════════════════════════════════════\x1B[0m');
+        debugPrint('🔥 [FCM TOKEN] : $token');
         await StorageService.instance.saveFcmToken(token);
         await saveFcmTokenToDatabase(token);
       }
 
       // 5. Listen to token refresh
       messaging.onTokenRefresh.listen((newToken) async {
-        print('\x1B[33m═══════════════════════════════════════════════════════════════\x1B[0m');
-        print('\x1B[33m🔄 [FCM TOKEN REFRESHED] : $newToken\x1B[0m');
-        print('\x1B[33m═══════════════════════════════════════════════════════════════\x1B[0m');
+        debugPrint('🔄 [FCM TOKEN REFRESHED] : $newToken');
         await StorageService.instance.saveFcmToken(newToken);
         await saveFcmTokenToDatabase(newToken);
       });
@@ -218,23 +214,23 @@ class PushNotificationService {
   /// Send FCM token to backend database API (/api/save_fcm_token)
   Future<bool> saveFcmTokenToDatabase(String token) async {
     try {
-      print('📤 [FCM] Sending token to database API (${ApiConstants.saveFcmToken}) ...');
+      debugPrint('📤 [FCM] Sending token to database API (${ApiConstants.saveFcmToken}) ...');
       final response = await _dioClient.post(
         ApiConstants.saveFcmToken,
         data: {'fcm_token': token},
       );
 
-      print('📥 [FCM] /api/save_fcm_token response: ${response.statusCode} => ${response.data}');
+      debugPrint('📥 [FCM] /api/save_fcm_token response: ${response.statusCode} => ${response.data}');
       if (response.statusCode == 200) {
         final data = response.data;
         if (data is Map && (data['success'] == true || data['status'] == 'success')) {
-          print('✅ [FCM] Token updated successfully in database: ${data['message']}');
+          debugPrint('✅ [FCM] Token updated successfully in database: ${data['message']}');
           return true;
         }
       }
       return false;
     } catch (e) {
-      print('⚠️ [FCM] Could not save token to database (may require user login): $e');
+      debugPrint('⚠️ [FCM] Could not save token to database (may require user login): $e');
       return false;
     }
   }

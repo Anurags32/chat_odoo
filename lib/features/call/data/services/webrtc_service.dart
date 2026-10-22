@@ -329,6 +329,12 @@ class WebRtcService {
     debugPrint('[WebRTC] Speakerphone enabled: $_isSpeakerOn');
   }
 
+  /// Toggle Audio Mute (alias for toggleMute)
+  void toggleAudioMute() => toggleMute();
+
+  /// End call and dispose session
+  Future<void> endCall() async => await dispose();
+
   /// Complete cleanup and resource disposal
   Future<void> dispose() async {
     debugPrint('[WebRTC] Disposing WebRTC session...');
