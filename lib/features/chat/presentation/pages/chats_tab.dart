@@ -345,16 +345,18 @@ class _ChatsTabState extends ConsumerState<ChatsTab> {
         ? DateFormat('h:mm a').format(group.lastMessageTime!)
         : '';
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
         color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+          ),
         ),
-      ),
-      child: ListTile(
+        child: ListTile(
         onTap: () => _openGroupChat(group),
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         leading: Container(
@@ -434,24 +436,27 @@ class _ChatsTabState extends ConsumerState<ChatsTab> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildDirectChatTile(ApiUserModel user, bool isDark) {
     final lastDate = user.lastMessageDate != null
         ? DateFormat('MMM d, h:mm a').format(user.lastMessageDate!)
         : '';
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
         color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+          ),
         ),
-      ),
-      child: ListTile(
+        child: ListTile(
         onTap: () => _openUserChat(user),
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         leading: UserAvatarWidget(user: user, radius: 24),
@@ -490,6 +495,7 @@ class _ChatsTabState extends ConsumerState<ChatsTab> {
               )
             : const Icon(Icons.arrow_forward_ios_rounded, size: 12),
       ),
-    );
-  }
+    ),
+  );
+}
 }

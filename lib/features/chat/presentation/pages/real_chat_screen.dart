@@ -82,15 +82,26 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
   }
 
   void _initiateCall(CallType type) {
+    final chatState = ref.read(chatApiProvider);
+    final channelId = chatState.channel?.id;
     ref.read(callManagerProvider.notifier).startCall(
+          channelId: channelId,
           calleePartnerId: widget.user.partnerId,
           calleeName: widget.user.name,
           callType: type,
         );
     if (type == CallType.video) {
-      context.push('/video-call', extra: {'callee_name': widget.user.name, 'partner_id': widget.user.partnerId});
+      context.push('/video-call', extra: {
+        'callee_name': widget.user.name,
+        'partner_id': widget.user.partnerId,
+        'channel_id': channelId,
+      });
     } else {
-      context.push('/audio-call', extra: {'callee_name': widget.user.name, 'partner_id': widget.user.partnerId});
+      context.push('/audio-call', extra: {
+        'callee_name': widget.user.name,
+        'partner_id': widget.user.partnerId,
+        'channel_id': channelId,
+      });
     }
   }
 

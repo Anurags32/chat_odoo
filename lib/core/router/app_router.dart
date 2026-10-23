@@ -13,6 +13,8 @@ import '../../features/call/presentation/pages/video_call_screen.dart';
 import '../../features/call/presentation/pages/group_call_screen.dart';
 import '../../features/call/presentation/pages/call_history_screen.dart';
 import '../../features/call/data/models/call_model.dart';
+import '../../features/call/presentation/pages/rtc_connection_screen.dart';
+import '../../features/call/presentation/pages/rtc_debug_log_screen.dart';
 
 class AppRouter {
   static const String splash = '/';
@@ -26,6 +28,8 @@ class AppRouter {
   static const String videoCall = '/video-call';
   static const String groupCall = '/group-call';
   static const String callHistory = '/call-history';
+  static const String rtcConnect = '/rtc-connect';
+  static const String rtcLogs = '/rtc-logs';
 
   static final GoRouter router = GoRouter(
     initialLocation: splash,
@@ -154,6 +158,18 @@ class AppRouter {
         path: callHistory,
         pageBuilder: (context, state) => const MaterialPage(
           child: CallHistoryScreen(),
+        ),
+      ),
+      GoRoute(
+        path: rtcConnect,
+        pageBuilder: (context, state) => const MaterialPage(
+          child: RtcConnectionScreen(),
+        ),
+      ),
+      GoRoute(
+        path: rtcLogs,
+        pageBuilder: (context, state) => const MaterialPage(
+          child: RtcDebugLogScreen(),
         ),
       ),
     ],

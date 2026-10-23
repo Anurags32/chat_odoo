@@ -29,7 +29,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
   final data = message.data;
   final action = data['action'] as String? ?? data['type'] as String? ?? '';
-  final callIdStr = data['call_id'] as String? ?? '';
+  final callIdStr = data['call_id']?.toString() ?? data['channel_id']?.toString() ?? '';
   final callId = int.tryParse(callIdStr);
 
   // 1. Handle Incoming Call in Killed/Background State
@@ -149,7 +149,7 @@ class PushNotificationService {
         debugPrint('[Push Foreground] FCM message received: ${message.data}');
         final data = message.data;
         final action = data['action'] as String? ?? data['type'] as String? ?? '';
-        final callIdStr = data['call_id'] as String? ?? '';
+        final callIdStr = data['call_id']?.toString() ?? data['channel_id']?.toString() ?? '';
         final callId = int.tryParse(callIdStr);
 
         if (action == 'incoming' || action == 'call' || action == 'webrtc_call') {

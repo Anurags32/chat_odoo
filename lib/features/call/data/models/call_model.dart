@@ -143,10 +143,22 @@ class CallModel {
       answerTime: answerTime ?? this.answerTime,
       endTime: endTime ?? this.endTime,
       duration: duration ?? this.duration,
-      durationFormatted: durationFormatted ?? this.durationFormatted,
-      endReason: endReason ?? this.endReason,
       caller: caller,
       callee: callee,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'call_type': callType.toJson(),
+    'state': state.name,
+    'start_time': startTime.toIso8601String(),
+    'answer_time': answerTime?.toIso8601String(),
+    'end_time': endTime?.toIso8601String(),
+    'duration': duration,
+    'duration_formatted': durationFormatted,
+    'end_reason': endReason,
+    'caller': caller.toJson(),
+    'callee': callee.toJson(),
+  };
 }

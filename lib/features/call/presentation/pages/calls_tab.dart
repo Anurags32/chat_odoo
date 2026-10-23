@@ -168,6 +168,16 @@ class _CallsTabState extends ConsumerState<CallsTab> {
         title: const Text('Calls'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.settings_phone_rounded),
+            tooltip: 'Odoo WebRTC Voice Portal',
+            onPressed: () => context.push('/rtc-connect'),
+          ),
+          IconButton(
+            icon: const Icon(Icons.terminal_rounded),
+            tooltip: 'Live Diagnostics & Logs',
+            onPressed: () => context.push('/rtc-logs'),
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: 'Refresh Call Logs',
             onPressed: () => ref.invalidate(callLogsFutureProvider),
@@ -313,11 +323,12 @@ class _CallsTabState extends ConsumerState<CallsTab> {
     final partnerName = call.callee.name;
     final partnerId = call.callee.partnerId;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+    return Material(
+      color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
+        side: BorderSide(
           color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
         ),
       ),

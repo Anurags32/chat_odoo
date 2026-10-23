@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:dio/dio.dart';
 import '../../../../core/network/dio_client.dart';
 import '../../../../core/network/api_constants.dart';
 import '../models/call_model.dart';
@@ -202,26 +203,40 @@ class CallSignalingService {
     }
   }
 
-  /// Fetch call history
+  /// Fetch call history (local storage fallback if server module endpoint is not mounted)
   Future<List<CallModel>> fetchHistory({int limit = 30, int offset = 0}) async {
+    List<CallModel> localCalls = [];
+    try {
+      final cached = await StorageService.instance.getCallHistory();
+      localCalls = cached.map((item) => CallModel.fromJson(item)).toList();
+    } catch (_) {}
+
     try {
       final response = await _dio.post(
         ApiConstants.webrtcCallHistory,
+        options: Options(
+          validateStatus: (status) => true,
+        ),
         data: {
           'jsonrpc': '2.0',
           'params': {'limit': limit, 'offset': offset},
         },
       );
 
-      final result = _unwrapResult(response.data);
-      if (result != null && result['calls'] is List) {
-        final list = result['calls'] as List;
-        return list.map((item) => CallModel.fromJson(item as Map<String, dynamic>)).toList();
+      if (response.statusCode == 200) {
+        final result = _unwrapResult(response.data);
+        if (result != null && result['calls'] is List) {
+          final list = result['calls'] as List;
+          final remote = list.map((item) => CallModel.fromJson(item as Map<String, dynamic>)).toList();
+          if (remote.isNotEmpty) {
+            return remote;
+          }
+        }
       }
     } catch (e) {
-      debugPrint('[Signaling] Error fetching call history: $e');
+      debugPrint('[Signaling] Remote call history endpoint unavailable: $e');
     }
-    return [];
+    return localCalls;
   }
 
   /// Helper to extract standard Odoo JSON-RPC result

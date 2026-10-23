@@ -236,6 +236,31 @@ class StorageService {
     }
   }
 
+  // ── Call History Caching ──────────────────────────────────────────────────
+  static const String _cachedCallsKey = 'cached_calls_history_json';
+
+  Future<void> saveCallRecord(Map<String, dynamic> callJson) async {
+    try {
+      final existing = await getCallHistory();
+      existing.insert(0, callJson);
+      if (existing.length > 50) {
+        existing.removeRange(50, existing.length);
+      }
+      await _preferences?.setString(_cachedCallsKey, jsonEncode(existing));
+    } catch (_) {}
+  }
+
+  Future<List<Map<String, dynamic>>> getCallHistory() async {
+    final raw = _preferences?.getString(_cachedCallsKey);
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      final list = jsonDecode(raw) as List;
+      return list.map((e) => (e as Map).cast<String, dynamic>()).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
   // ── Clear & Logout ───────────────────────────────────────────────────────
   Future<bool> clearAll() async {
     await _secureStorage.deleteAll();
