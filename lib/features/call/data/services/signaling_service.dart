@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../../../core/storage/storage_service.dart';
@@ -27,16 +28,23 @@ typedef SessionEndedCallback = void Function(int sessionId);
 /// - discuss.channel/rtc_sessions_update
 /// - discuss.channel.rtc.session/ended
 ///
-/// Sends peer signaling payloads via OdooApi.notifyCallMembers() with detailed logging.
+/// Sends peer signaling payloads via OdooApi.notifyCallMembers() with debounced batching and detailed logging.
 class SignalingService {
   final OdooApi _odooApi;
 
   WebSocketChannel? _channel;
+  WebSocket? _rawSocket;
   StreamSubscription? _subscription;
+  Timer? _keepAlive;
   bool _isConnected = false;
   int _currentChannelId = 0;
+  int _lastNotificationId = 0;
   Timer? _reconnectTimer;
   bool _disposed = false;
+
+  // Outbound batching (100ms debounce like Odoo's peer_to_peer.js)
+  final List<List<dynamic>> _outbox = [];
+  bool _flushScheduled = false;
 
   PeerNotificationCallback? onPeerNotification;
   RtcSessionsUpdateCallback? onRtcSessionsUpdate;
@@ -47,7 +55,7 @@ class SignalingService {
   bool get isConnected => _isConnected;
 
   String _deriveWsUrl(String baseUrl) {
-    var wsUrl = '$baseUrl/websocket';
+    var wsUrl = '$baseUrl/websocket?version=18.0-7';
     if (wsUrl.startsWith('https://')) {
       wsUrl = wsUrl.replaceFirst('https://', 'wss://');
     } else if (wsUrl.startsWith('http://')) {
@@ -88,12 +96,12 @@ class SignalingService {
         headers['Cookie'] = 'session_id=$sessionCookie';
       }
 
-      final ioSocket = await WebSocket.connect(
+      _rawSocket = await WebSocket.connect(
         wsEndpoint,
         headers: headers,
       ).timeout(const Duration(seconds: 10));
 
-      _channel = IOWebSocketChannel(ioSocket);
+      _channel = IOWebSocketChannel(_rawSocket!);
       _isConnected = true;
 
       RtcLogger.instance.log('WebSocket Bus CONNECTED successfully.', tag: 'SIGNAL-BUS');
@@ -113,6 +121,15 @@ class SignalingService {
         },
         cancelOnError: false,
       );
+
+      // Keepalive byte 0x00 every 60s (as in websocket_worker.js)
+      _keepAlive?.cancel();
+      _keepAlive = Timer.periodic(const Duration(seconds: 60), (_) {
+        try {
+          _rawSocket?.add(Uint8List.fromList([0]));
+          RtcLogger.instance.log('Sent WebSocket bus keep-alive ping (0x00)', tag: 'SIGNAL-BUS');
+        } catch (_) {}
+      });
     } catch (e) {
       RtcLogger.instance.log('WebSocket Bus Connection ERROR: $e', tag: 'SIGNAL-BUS');
       _handleDisconnect();
@@ -132,22 +149,29 @@ class SignalingService {
       'event_name': 'subscribe',
       'data': {
         'channels': channels,
-        'last': 0,
+        'last': _lastNotificationId,
       },
     };
 
     final payload = jsonEncode(subscribeMsg);
-    RtcLogger.instance.log('Subscribing to channels: $channels', tag: 'SIGNAL-BUS');
+    RtcLogger.instance.log('Subscribing to channels: $channels with last: $_lastNotificationId', tag: 'SIGNAL-BUS');
     _channel?.sink.add(payload);
   }
 
   void _onMessageReceived(dynamic rawData) {
+    if (rawData is! String) return; // Ignore binary keepalive frames safely
     try {
-      final decoded = jsonDecode(rawData as String);
+      final decoded = jsonDecode(rawData);
 
       if (decoded is List) {
         for (final item in decoded) {
           if (item is Map) {
+            if (item['id'] != null) {
+              final nid = item['id'] as int;
+              if (nid > _lastNotificationId) {
+                _lastNotificationId = nid;
+              }
+            }
             _processBusNotification(item);
           }
         }
@@ -232,6 +256,44 @@ class SignalingService {
     }
   }
 
+  /// Outbound batching with 100ms debounce (like Odoo's peer_to_peer.js)
+  void enqueueSignal({
+    required int senderSessionId,
+    required List<int> targetSessionIds,
+    required int channelId,
+    required String event,
+    required dynamic payload,
+  }) {
+    if (targetSessionIds.isEmpty) return;
+    _outbox.add([
+      senderSessionId,
+      targetSessionIds,
+      jsonEncode({'event': event, 'channelId': channelId, 'payload': payload}),
+    ]);
+    RtcLogger.instance.logOutgoingSignaling(
+      event,
+      200,
+      details: 'Queued to $targetSessionIds (outbox: ${_outbox.length})',
+    );
+    if (!_flushScheduled) {
+      _flushScheduled = true;
+      Future.delayed(const Duration(milliseconds: 100), flushOutbox);
+    }
+  }
+
+  /// Flush queued outbound signals immediately
+  Future<void> flushOutbox() async {
+    _flushScheduled = false;
+    if (_outbox.isEmpty) return;
+    final batch = List<List<dynamic>>.from(_outbox);
+    _outbox.clear();
+    try {
+      await _odooApi.notifyCallMembers(peerNotifications: batch);
+    } catch (e) {
+      RtcLogger.instance.log('flushOutbox notify_call_members failed: $e', tag: 'SIGNAL-BUS');
+    }
+  }
+
   /// Send peer signaling message via OdooApi /mail/rtc/session/notify_call_members
   Future<bool> sendSignal({
     required int senderSessionId,
@@ -269,9 +331,12 @@ class SignalingService {
 
   void _handleDisconnect() {
     _isConnected = false;
+    _keepAlive?.cancel();
     _subscription?.cancel();
     _channel?.sink.close();
+    _rawSocket?.close();
     _channel = null;
+    _rawSocket = null;
 
     if (!_disposed) {
       _reconnectTimer?.cancel();
@@ -288,10 +353,14 @@ class SignalingService {
   Future<void> disconnect() async {
     _disposed = true;
     _isConnected = false;
+    _keepAlive?.cancel();
     _reconnectTimer?.cancel();
     await _subscription?.cancel();
     await _channel?.sink.close();
+    await _rawSocket?.close();
     _channel = null;
+    _rawSocket = null;
+    _outbox.clear();
     RtcLogger.instance.log('SignalingService disconnected.', tag: 'SIGNAL-BUS');
   }
 }

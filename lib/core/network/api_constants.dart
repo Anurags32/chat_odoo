@@ -11,9 +11,11 @@ class ApiConstants {
 
   static String get baseUrl => '$_serverUrl/api';
 
-  // WebSocket URL (Must use wss:// or ws:// scheme)
+  static const String wsVersion = '18.0-7';
+
+  // WebSocket URL (Must use wss:// or ws:// scheme with Odoo 18 version query param)
   static String get wsUrl {
-    String url = '$_serverUrl/websocket';
+    String url = '$_serverUrl/websocket?version=$wsVersion';
     if (url.startsWith('https://')) {
       return url.replaceFirst('https://', 'wss://');
     } else if (url.startsWith('http://')) {
@@ -27,6 +29,7 @@ class ApiConstants {
   // Odoo Session & WebRTC Endpoints
   static String get sessionAuthenticate => '$_serverUrl/web/session/authenticate';
   static String get databaseList => '$_serverUrl/web/database/list';
+  static String get webrtcPingChannel => '$_serverUrl/discuss/channel/ping';
 
   // Custom webrtc_call module endpoints
   static String get webrtcIceServers => '$_serverUrl/webrtc/ice_servers';

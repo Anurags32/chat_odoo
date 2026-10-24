@@ -19,7 +19,9 @@ class WebSocketService {
   String get _wsBaseUrl => ApiConstants.wsUrl;
 
   WebSocketChannel? _channel;
+  WebSocket? _ioSocket;
   StreamSubscription? _subscription;
+  Timer? _keepAlive;
 
   WsStatus _status = WsStatus.disconnected;
   WsStatus get status => _status;
@@ -61,10 +63,6 @@ class WebSocketService {
           ? sessionCookie
           : token;
 
-      // ── Debug: raw HTTP response before WS upgrade ──────────────────────
-      await _debugHttpResponse(cookieToUse);
-      // ────────────────────────────────────────────────────────────────────
-
       final headers = <String, dynamic>{};
       if (cookieToUse != null && cookieToUse.isNotEmpty) {
         headers['Cookie'] = 'session_id=$cookieToUse';
@@ -84,11 +82,11 @@ class WebSocketService {
         wsEndpoint = wsEndpoint.replaceFirst('http://', 'ws://');
       }
 
-      final ioSocket = await WebSocket.connect(
+      _ioSocket = await WebSocket.connect(
         wsEndpoint,
         headers: headers,
       );
-      _channel = IOWebSocketChannel(ioSocket);
+      _channel = IOWebSocketChannel(_ioSocket!);
 
       _setStatus(WsStatus.connected);
       debugPrint('[WS] Connected successfully.');
@@ -103,6 +101,17 @@ class WebSocketService {
         onDone: _onDone,
         cancelOnError: false,
       );
+
+      // Odoo websocket_worker sends keep-alive 0x00 byte every 60s
+      _keepAlive?.cancel();
+      _keepAlive = Timer.periodic(const Duration(seconds: 60), (_) {
+        try {
+          _ioSocket?.add(Uint8List.fromList([0]));
+          debugPrint('[WS] Sent keep-alive ping byte (0x00).');
+        } catch (e) {
+          debugPrint('[WS] Keep-alive ping failed: $e');
+        }
+      });
     } catch (e) {
       debugPrint('[WS] Connection error: $e');
       _setStatus(WsStatus.error);
@@ -112,10 +121,18 @@ class WebSocketService {
   }
 
   void _subscribe() {
+    final channels = <String>[];
+    if (_channelId > 0) {
+      channels.addAll([
+        'discuss.channel_$_channelId',
+        'channel_$_channelId',
+      ]);
+    }
+    // If channels is empty, Odoo 18 auto-subscribes to user's partner channel
     final body = {
       'event_name': 'subscribe',
       'data': {
-        'channels': ['channel_$_channelId'],
+        'channels': channels,
         'last': _lastMessageId,
       },
     };
@@ -133,11 +150,22 @@ class WebSocketService {
   }
 
   void _onData(dynamic raw) {
+    // Guard against binary keepalive ping/pong frames
+    if (raw is! String) return;
+
     debugPrint('[WS] Raw message received: $raw');
     try {
-      final decoded = jsonDecode(raw as String);
+      final decoded = jsonDecode(raw);
       if (decoded is List) {
         debugPrint('[WS] Parsed ${decoded.length} event(s).');
+        for (final item in decoded) {
+          if (item is Map && item['id'] != null) {
+            final nid = item['id'] as int;
+            if (nid > _lastMessageId) {
+              _lastMessageId = nid;
+            }
+          }
+        }
         onMessage?.call(decoded);
       } else {
         debugPrint('[WS] Unexpected message format: $decoded');
@@ -149,6 +177,7 @@ class WebSocketService {
 
   void _onStreamError(dynamic error) {
     debugPrint('[WS] Stream error: $error');
+    _keepAlive?.cancel();
     _setStatus(WsStatus.error);
     onError?.call('Stream error: $error');
     _scheduleReconnect();
@@ -156,6 +185,7 @@ class WebSocketService {
 
   void _onDone() {
     debugPrint('[WS] Connection closed.');
+    _keepAlive?.cancel();
     _setStatus(WsStatus.disconnected);
     _scheduleReconnect();
   }
@@ -177,52 +207,14 @@ class WebSocketService {
   /// Disconnect and stop reconnecting
   Future<void> disconnect() async {
     _shouldReconnect = false;
+    _keepAlive?.cancel();
     _reconnectTimer?.cancel();
     await _subscription?.cancel();
     await _channel?.sink.close();
+    await _ioSocket?.close();
     _channel = null;
+    _ioSocket = null;
     _setStatus(WsStatus.disconnected);
     debugPrint('[WS] Disconnected.');
-  }
-
-  // ── Debug helper: fire a plain HTTP request to the WS endpoint and print
-  // the raw status + headers + body so we can see exactly why 400 is returned.
-  Future<void> _debugHttpResponse(String? token) async {
-    try {
-      final httpUrl = _wsBaseUrl
-          .replaceFirst('ws://', 'http://')
-          .replaceFirst('wss://', 'https://');
-
-      final client = HttpClient();
-      client.connectionTimeout = const Duration(seconds: 5);
-
-      final req = await client.getUrl(Uri.parse(httpUrl));
-      req.headers.set('Upgrade', 'websocket');
-      req.headers.set('Connection', 'Upgrade');
-      req.headers.set('Sec-WebSocket-Key', 'dGhlIHNhbXBsZSBub25jZQ==');
-      req.headers.set('Sec-WebSocket-Version', '13');
-      req.headers.set('Origin', ApiConstants.wsOrigin);
-      req.headers.set('ngrok-skip-browser-warning', 'true');
-      if (token != null && token.isNotEmpty) {
-        req.headers.set('Cookie', 'session_id=$token');
-      }
-
-      final resp = await req.close();
-      final body = await resp.transform(const Utf8Decoder()).join();
-
-      debugPrint('┌─────────────────────────────────────────');
-      debugPrint('│ [WS DEBUG] Raw server response');
-      debugPrint('│ Status : ${resp.statusCode} ${resp.reasonPhrase}');
-      debugPrint('│ Headers:');
-      resp.headers.forEach((name, values) {
-        debugPrint('│   $name: ${values.join(', ')}');
-      });
-      debugPrint('│ Body   : $body');
-      debugPrint('└─────────────────────────────────────────');
-
-      client.close();
-    } catch (e) {
-      debugPrint('[WS DEBUG] Could not fetch debug response: $e');
-    }
   }
 }

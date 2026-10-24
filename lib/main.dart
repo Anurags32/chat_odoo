@@ -16,7 +16,6 @@ import 'features/call/data/services/push_notification_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. Initialize Firebase Core
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
@@ -25,16 +24,12 @@ void main() async {
     debugPrint('[Firebase] Initialization error: $e');
   }
 
-  // 2. Register FCM Top-Level Background Message Handler
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-  // 3. Initialize Local Notifications Plugin & High-Importance Channels
   await NotificationService.instance.initialize();
 
-  // 4. Initialize Local Key-Value Storage
   await StorageService.init();
 
-  // 5. Set System UI Overlay Style
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -56,7 +51,7 @@ class _MyAppState extends ConsumerState<MyApp> {
   @override
   void initState() {
     super.initState();
-    // Initialize CallKit, Push Notification listeners and handle launch from notification
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       ref.read(callKitServiceProvider).initialize();
       ref.read(pushNotificationServiceProvider).initialize();
@@ -75,10 +70,7 @@ class _MyAppState extends ConsumerState<MyApp> {
       routerConfig: AppRouter.router,
       builder: (context, child) {
         return Stack(
-          children: [
-            if (child != null) child,
-            const IncomingCallDialog(),
-          ],
+          children: [if (child != null) child, const IncomingCallDialog()],
         );
       },
     );

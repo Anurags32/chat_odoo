@@ -3,14 +3,6 @@ import '../../../../core/storage/storage_service.dart';
 import '../../../../config.dart';
 import 'rtc_logger.dart';
 
-/// Odoo HTTP / JSON-RPC 2.0 API Client for Discuss RTC
-///
-/// Handles session authentication, cookie preservation, and all RTC endpoints:
-/// - /web/session/authenticate
-/// - /mail/rtc/channel/join_call
-/// - /mail/rtc/channel/leave_call
-/// - /mail/rtc/session/notify_call_members
-/// - /mail/rtc/session/update_and_broadcast
 class OdooApi {
   String _baseUrl;
   String? _sessionCookie;
@@ -20,7 +12,8 @@ class OdooApi {
 
   late Dio _dio;
 
-  OdooApi({String? baseUrl}) : _baseUrl = _sanitizeUrl(baseUrl ?? CallConfig.defaultBaseUrl) {
+  OdooApi({String? baseUrl})
+    : _baseUrl = _sanitizeUrl(baseUrl ?? CallConfig.defaultBaseUrl) {
     _initDio();
   }
 
@@ -67,7 +60,6 @@ class OdooApi {
           return handler.next(options);
         },
         onResponse: (response, handler) {
-          // Check for set-cookie header to capture updated session
           final setCookies = response.headers['set-cookie'];
           if (setCookies != null) {
             for (final c in setCookies) {
@@ -93,15 +85,15 @@ class OdooApi {
   int? get partnerId => _partnerId;
   String? get userName => _userName;
 
-  /// Update the base URL dynamically (e.g. from UI input)
   void updateBaseUrl(String newUrl) {
     _baseUrl = _sanitizeUrl(newUrl);
     _dio.options.baseUrl = _baseUrl;
-    RtcLogger.instance.log('Updated Odoo API Base URL: $_baseUrl', tag: 'ODOO-API');
+    RtcLogger.instance.log(
+      'Updated Odoo API Base URL: $_baseUrl',
+      tag: 'ODOO-API',
+    );
   }
 
-  /// Authenticate against Odoo official session endpoint (/web/session/authenticate)
-  /// and persist session_id cookie.
   Future<bool> authenticate({
     required String db,
     required String login,
@@ -115,14 +107,13 @@ class OdooApi {
     final url = '$_baseUrl/web/session/authenticate';
     final payload = {
       'jsonrpc': '2.0',
-      'params': {
-        'db': db,
-        'login': login,
-        'password': password,
-      },
+      'params': {'db': db, 'login': login, 'password': password},
     };
 
-    RtcLogger.instance.log('Authenticating $login against $url (db: $db)...', tag: 'ODOO-API');
+    RtcLogger.instance.log(
+      'Authenticating $login against $url (db: $db)...',
+      tag: 'ODOO-API',
+    );
 
     try {
       final response = await _dio.post(url, data: payload);
@@ -139,7 +130,6 @@ class OdooApi {
           _sessionCookie = sid;
         }
 
-        // Check header fallback if body did not have session_id
         if (_sessionCookie == null || _sessionCookie!.isEmpty) {
           final cookies = response.headers['set-cookie'];
           if (cookies != null) {
@@ -155,7 +145,10 @@ class OdooApi {
 
         if (_sessionCookie != null && _sessionCookie!.isNotEmpty) {
           await StorageService.instance.saveSessionCookie(_sessionCookie!);
-          await StorageService.instance.saveCredentials(login: login, password: password);
+          await StorageService.instance.saveCredentials(
+            login: login,
+            password: password,
+          );
           await StorageService.instance.saveUserData(
             userId: _uid ?? 1,
             userName: _userName ?? login,
@@ -180,10 +173,6 @@ class OdooApi {
     }
   }
 
-  /// Call /mail/rtc/channel/join_call
-  ///
-  /// Replicates Odoo Discuss joinCall:
-  /// Returns { sessionId: int, iceServers: List, rtcSessions: List, serverInfo: Map? }
   Future<Map<String, dynamic>> joinCall({
     required int channelId,
     List<int>? checkRtcSessionIds,
@@ -194,10 +183,14 @@ class OdooApi {
       'params': {
         'channel_id': channelId,
         'check_rtc_session_ids': checkRtcSessionIds ?? [],
+        'camera': false,
       },
     };
 
-    RtcLogger.instance.log('Joining RTC call on channel $channelId...', tag: 'ODOO-API');
+    RtcLogger.instance.log(
+      'Joining RTC call on channel $channelId...',
+      tag: 'ODOO-API',
+    );
 
     try {
       final response = await _dio.post(url, data: payload);
@@ -205,7 +198,10 @@ class OdooApi {
 
       if (data is Map && data['result'] != null) {
         final result = data['result'];
-        RtcLogger.instance.log('join_call response result received: $result', tag: 'ODOO-API');
+        RtcLogger.instance.log(
+          'join_call response result received: $result',
+          tag: 'ODOO-API',
+        );
 
         int? sessionId;
         List<dynamic> iceServers = [];
@@ -213,31 +209,63 @@ class OdooApi {
         Map<String, dynamic>? serverInfo;
 
         if (result is Map) {
-          // Standard Odoo 16/17 and 18 formats
-          sessionId = result['sessionId'] as int? ??
+          // 1. Odoo 18 format: result['Rtc']['selfSession'] & result['Rtc']['iceServers']
+          if (result['Rtc'] is Map) {
+            final rtc = result['Rtc'] as Map;
+            if (rtc['selfSession'] != null) {
+              sessionId = rtc['selfSession'] as int?;
+            }
+            if (rtc['iceServers'] is List) {
+              iceServers = rtc['iceServers'] as List;
+            }
+          }
+
+          // 2. Standard Odoo 16/17 fallback formats
+          sessionId ??=
+              result['sessionId'] as int? ??
               result['rtcsession_id'] as int? ??
               result['rtc_session_id'] as int?;
-          if (result['iceServers'] is List) {
-            iceServers = result['iceServers'] as List;
-          } else if (result['ice_servers'] is List) {
-            iceServers = result['ice_servers'] as List;
+
+          if (iceServers.isEmpty) {
+            if (result['iceServers'] is List) {
+              iceServers = result['iceServers'] as List;
+            } else if (result['ice_servers'] is List) {
+              iceServers = result['ice_servers'] as List;
+            }
           }
+
           if (result['rtcSessions'] is List) {
             rtcSessions = result['rtcSessions'] as List;
+          } else if (result['discuss.channel'] is List) {
+            // Odoo 18 discuss.channel format
+            for (final ch in result['discuss.channel']) {
+              if (ch is Map && ch['id'] == channelId && ch['rtcSessions'] is List) {
+                final ops = ch['rtcSessions'] as List;
+                for (final op in ops) {
+                  if (op is List && op.length == 2 && op[0] == 'ADD' && op[1] is List) {
+                    for (final sId in op[1]) {
+                      rtcSessions.add({'id': sId});
+                    }
+                  }
+                }
+              }
+            }
           }
+
           if (result['serverInfo'] is Map) {
             serverInfo = (result['serverInfo'] as Map).cast<String, dynamic>();
           }
 
-          // Odoo 18 Store format fallback
-          if (sessionId == null && result.containsKey('discuss.channel.rtc.session')) {
+          // 3. Odoo 18 Store format fallback
+          if (sessionId == null &&
+              result.containsKey('discuss.channel.rtc.session')) {
             final sessions = result['discuss.channel.rtc.session'];
             if (sessions is List && sessions.isNotEmpty) {
               final lastSession = sessions.last;
               if (lastSession is Map && lastSession['id'] != null) {
                 sessionId = lastSession['id'] as int;
               }
-              rtcSessions = sessions;
+              if (rtcSessions.isEmpty) rtcSessions = sessions;
             }
           }
         }
@@ -265,12 +293,13 @@ class OdooApi {
     final url = '$_baseUrl/mail/rtc/channel/leave_call';
     final payload = {
       'jsonrpc': '2.0',
-      'params': {
-        'channel_id': channelId,
-      },
+      'params': {'channel_id': channelId},
     };
 
-    RtcLogger.instance.log('Leaving RTC call on channel $channelId...', tag: 'ODOO-API');
+    RtcLogger.instance.log(
+      'Leaving RTC call on channel $channelId...',
+      tag: 'ODOO-API',
+    );
 
     try {
       final response = await _dio.post(url, data: payload);
@@ -303,9 +332,7 @@ class OdooApi {
     final url = '$_baseUrl/mail/rtc/session/notify_call_members';
     final payload = {
       'jsonrpc': '2.0',
-      'params': {
-        'peer_notifications': peerNotifications,
-      },
+      'params': {'peer_notifications': peerNotifications},
     };
 
     try {
@@ -314,10 +341,16 @@ class OdooApi {
       return statusCode;
     } on DioException catch (e) {
       final code = e.response?.statusCode ?? 500;
-      RtcLogger.instance.log('notify_call_members DioException: $e (status: $code)', tag: 'ODOO-API');
+      RtcLogger.instance.log(
+        'notify_call_members DioException: $e (status: $code)',
+        tag: 'ODOO-API',
+      );
       return code;
     } catch (e) {
-      RtcLogger.instance.log('notify_call_members unexpected exception: $e', tag: 'ODOO-API');
+      RtcLogger.instance.log(
+        'notify_call_members unexpected exception: $e',
+        tag: 'ODOO-API',
+      );
       return 500;
     }
   }
@@ -330,10 +363,7 @@ class OdooApi {
     final url = '$_baseUrl/mail/rtc/session/update_and_broadcast';
     final payload = {
       'jsonrpc': '2.0',
-      'params': {
-        'session_id': sessionId,
-        'values': values,
-      },
+      'params': {'session_id': sessionId, 'values': values},
     };
 
     try {
@@ -341,6 +371,31 @@ class OdooApi {
       return response.statusCode == 200;
     } catch (e) {
       RtcLogger.instance.log('update_and_broadcast ERROR: $e', tag: 'ODOO-API');
+      return false;
+    }
+  }
+
+  /// Call /discuss/channel/ping (Odoo 18 call keep-alive every 30s)
+  Future<bool> pingChannel({
+    required int channelId,
+    required int rtcSessionId,
+    required List<int> checkRtcSessionIds,
+  }) async {
+    final url = '$_baseUrl/discuss/channel/ping';
+    final payload = {
+      'jsonrpc': '2.0',
+      'params': {
+        'channel_id': channelId,
+        'rtc_session_id': rtcSessionId,
+        'check_rtc_session_ids': checkRtcSessionIds,
+      },
+    };
+
+    try {
+      final response = await _dio.post(url, data: payload);
+      return response.statusCode == 200;
+    } catch (e) {
+      RtcLogger.instance.log('pingChannel error: $e', tag: 'ODOO-API');
       return false;
     }
   }
