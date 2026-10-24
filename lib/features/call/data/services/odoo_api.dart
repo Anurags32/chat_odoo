@@ -176,6 +176,7 @@ class OdooApi {
   Future<Map<String, dynamic>> joinCall({
     required int channelId,
     List<int>? checkRtcSessionIds,
+    bool camera = false,
   }) async {
     final url = '$_baseUrl/mail/rtc/channel/join_call';
     final payload = {
@@ -183,7 +184,7 @@ class OdooApi {
       'params': {
         'channel_id': channelId,
         'check_rtc_session_ids': checkRtcSessionIds ?? [],
-        'camera': false,
+        'camera': camera,
       },
     };
 

@@ -12,6 +12,51 @@ import '../providers/call_provider.dart';
 import 'call_signaling_service.dart';
 import 'callkit_service.dart';
 
+bool _isCallNotification(Map<String, dynamic> data, RemoteNotification? notif) {
+  final action = (data['action'] ?? data['type'] ?? data['event'] ?? '').toString().toLowerCase();
+  if (action == 'incoming' ||
+      action == 'call' ||
+      action == 'webrtc_call' ||
+      action == 'incoming_call' ||
+      action == 'invite') {
+    return true;
+  }
+  if (data.containsKey('call_type') || data.containsKey('callType') || data.containsKey('rtc_session_id')) {
+    return true;
+  }
+  final text = '${data['title'] ?? ''} ${data['body'] ?? ''} ${notif?.title ?? ''} ${notif?.body ?? ''}'.toLowerCase();
+  if ((text.contains('call') || text.contains('calling') || text.contains('incoming')) &&
+      (data.containsKey('channel_id') || data.containsKey('call_id') || data.containsKey('id'))) {
+    return true;
+  }
+  return false;
+}
+
+bool _isCallCancellation(Map<String, dynamic> data) {
+  final action = (data['action'] ?? data['type'] ?? data['event'] ?? '').toString().toLowerCase();
+  return action == 'cancel' || action == 'ended' || action == 'rejected' || action == 'hangup' || action == 'end';
+}
+
+int? _extractCallId(Map<String, dynamic> data) {
+  final raw = data['call_id'] ?? data['channel_id'] ?? data['channelId'] ?? data['id'];
+  return int.tryParse(raw?.toString() ?? '');
+}
+
+String _extractCallerName(Map<String, dynamic> data, RemoteNotification? notif) {
+  return data['caller_name'] as String? ??
+      data['sender_name'] as String? ??
+      data['user_name'] as String? ??
+      data['name'] as String? ??
+      data['title'] as String? ??
+      notif?.title ??
+      'Incoming Call';
+}
+
+CallType _extractCallType(Map<String, dynamic> data) {
+  final raw = (data['call_type'] ?? data['callType'] ?? data['type'] ?? '').toString().toLowerCase();
+  return raw.contains('video') ? CallType.video : CallType.audio;
+}
+
 /// Top-level background message handler for FCM (wakes up the app from killed/terminated or background state)
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -28,16 +73,13 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   }
 
   final data = message.data;
-  final action = data['action'] as String? ?? data['type'] as String? ?? '';
-  final callIdStr = data['call_id']?.toString() ?? data['channel_id']?.toString() ?? '';
-  final callId = int.tryParse(callIdStr);
+  final callId = _extractCallId(data);
 
   // 1. Handle Incoming Call in Killed/Background State
-  if (action == 'incoming' || action == 'call' || action == 'webrtc_call') {
+  if (_isCallNotification(data, message.notification)) {
     if (callId != null) {
-      final callerName = data['caller_name'] as String? ?? 'Incoming Call';
-      final callTypeStr = data['call_type'] as String? ?? 'audio';
-      final callType = callTypeStr == 'video' ? CallType.video : CallType.audio;
+      final callerName = _extractCallerName(data, message.notification);
+      final callType = _extractCallType(data);
 
       await CallKitService.showIncomingCallStatic(
         callId: callId,
@@ -50,7 +92,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   }
 
   // 2. Handle Call Cancellation/End in Killed/Background State
-  if (action == 'cancel' || action == 'ended' || action == 'rejected') {
+  if (_isCallCancellation(data)) {
     if (callId != null) {
       await CallKitService.endCallStatic(callId);
       await NotificationService.instance.cancel(callId);
@@ -148,22 +190,20 @@ class PushNotificationService {
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
         debugPrint('[Push Foreground] FCM message received: ${message.data}');
         final data = message.data;
-        final action = data['action'] as String? ?? data['type'] as String? ?? '';
-        final callIdStr = data['call_id']?.toString() ?? data['channel_id']?.toString() ?? '';
-        final callId = int.tryParse(callIdStr);
+        final callId = _extractCallId(data);
 
-        if (action == 'incoming' || action == 'call' || action == 'webrtc_call') {
+        if (_isCallNotification(data, message.notification)) {
           if (callId != null) {
-            final callerName = data['caller_name'] as String? ?? 'Incoming Call';
-            final callTypeStr = data['call_type'] as String? ?? 'audio';
+            final callerName = _extractCallerName(data, message.notification);
+            final callType = _extractCallType(data);
             CallKitService.showIncomingCallStatic(
               callId: callId,
               callerName: callerName,
-              callType: callTypeStr == 'video' ? CallType.video : CallType.audio,
+              callType: callType,
               avatar: data['avatar'] as String?,
             );
           }
-        } else if (action == 'cancel' || action == 'ended' || action == 'rejected') {
+        } else if (_isCallCancellation(data)) {
           if (callId != null) {
             CallKitService.endCallStatic(callId);
             NotificationService.instance.cancel(callId);

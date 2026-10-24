@@ -17,14 +17,22 @@ class RtcCallService extends ChangeNotifier {
   RTCPeerConnection? _peerConnection;
   RTCDataChannel? _dataChannel;
   RTCRtpTransceiver? _audioTransceiver;
+  RTCRtpTransceiver? _videoTransceiver;
   MediaStream? _localStream;
   MediaStream? _remoteStream;
+
+  // Renderers for video
+  final RTCVideoRenderer localRenderer = RTCVideoRenderer();
+  final RTCVideoRenderer remoteRenderer = RTCVideoRenderer();
+  bool _renderersInitialized = false;
 
   CallStatus _status = CallStatus.idle;
   int _channelId = 0;
   int? _selfSessionId;
   List<int> _remoteSessionIds = [];
 
+  bool _isVideo = false;
+  bool _isVideoOff = false;
   bool _isMuted = false;
   bool _isSpeakerOn = true;
   int _callDuration = 0;
@@ -47,6 +55,8 @@ class RtcCallService extends ChangeNotifier {
   CallStatus get status => _status;
   int get channelId => _channelId;
   int? get selfSessionId => _selfSessionId;
+  bool get isVideo => _isVideo;
+  bool get isVideoOff => _isVideoOff;
   bool get isMuted => _isMuted;
   bool get isSpeakerOn => _isSpeakerOn;
   int get callDuration => _callDuration;
@@ -69,6 +79,19 @@ class RtcCallService extends ChangeNotifier {
     _signalingService.onSessionEnded = _handleSessionEnded;
   }
 
+  /// Initialize local and remote video renderers
+  Future<void> initRenderers() async {
+    if (_renderersInitialized) return;
+    try {
+      await localRenderer.initialize();
+      await remoteRenderer.initialize();
+      _renderersInitialized = true;
+      RtcLogger.instance.log('RTCVideoRenderers initialized.', tag: 'MEDIA');
+    } catch (e) {
+      RtcLogger.instance.log('Failed to initialize video renderers: $e', tag: 'MEDIA');
+    }
+  }
+
   /// Request microphone permission
   Future<bool> requestMicrophonePermission() async {
     final status = await Permission.microphone.request();
@@ -83,25 +106,42 @@ class RtcCallService extends ChangeNotifier {
     return true;
   }
 
-  /// Start or join a voice call on the given Odoo Discuss channel
+  /// Request camera permission
+  Future<bool> requestCameraPermission() async {
+    final status = await Permission.camera.request();
+    if (!status.isGranted) {
+      RtcLogger.instance.log(
+        'Camera permission DENIED by user.',
+        tag: 'PERM',
+      );
+      return false;
+    }
+    RtcLogger.instance.log('Camera permission GRANTED.', tag: 'PERM');
+    return true;
+  }
+
+  /// Start or join a voice or video call on the given Odoo Discuss channel
   Future<bool> joinCall({
     required int channelId,
+    bool isVideo = false,
     bool createOfferIfFirst = true,
   }) async {
     RtcLogger.instance.resetCounters();
     RtcLogger.instance.log(
-      'Starting joinCall flow on channel $channelId...',
+      'Starting joinCall flow on channel $channelId (isVideo: $isVideo)...',
       tag: 'CALL',
     );
 
     _channelId = channelId;
+    _isVideo = isVideo;
+    _isVideoOff = false;
     _status = CallStatus.connecting;
     _callDuration = 0;
     _queuedRemoteCandidates.clear();
     _remoteDescriptionSet = false;
     notifyListeners();
 
-    // 1. Ensure microphone permission
+    // 1. Ensure microphone permission (and camera if video)
     final hasMic = await requestMicrophonePermission();
     if (!hasMic) {
       _status = CallStatus.failed;
@@ -113,14 +153,31 @@ class RtcCallService extends ChangeNotifier {
       return false;
     }
 
+    if (_isVideo) {
+      final hasCam = await requestCameraPermission();
+      if (!hasCam) {
+        _status = CallStatus.failed;
+        RtcLogger.instance.log(
+          'Cannot initiate video call without camera permission.',
+          tag: 'CALL',
+        );
+        notifyListeners();
+        return false;
+      }
+      await initRenderers();
+    }
+
     // 2. Start 20s diagnosis timer for ICE connection
     _startDiagnosisTimer();
 
     // 3. Connect Signaling WebSocket to channel bus
     await _signalingService.connect(channelId: channelId);
 
-    // 4. Join call via Odoo HTTP JSON-RPC
-    final joinResult = await _odooApi.joinCall(channelId: channelId);
+    // 4. Join call via Odoo HTTP JSON-RPC with camera flag
+    final joinResult = await _odooApi.joinCall(
+      channelId: channelId,
+      camera: _isVideo,
+    );
     if (joinResult.containsKey('error') || joinResult['sessionId'] == null) {
       RtcLogger.instance.log(
         'Failed to join call via Odoo: ${joinResult['error']}',
@@ -151,8 +208,8 @@ class RtcCallService extends ChangeNotifier {
     // 5. Initialize WebRTC Peer Connection with iceServers from Odoo (or STUN fallback)
     await _initPeerConnection(odooIceServers);
 
-    // 6. Acquire local microphone audio track
-    await _createLocalAudioStream();
+    // 6. Acquire local media stream (mic + camera if video)
+    await _createLocalMediaStream();
 
     // 7. Handle call initiation/answer:
     // If remote sessions already exist in the channel (e.g. Odoo web user is waiting),
@@ -250,8 +307,8 @@ class RtcCallService extends ChangeNotifier {
             'isSelfMuted': _isMuted,
             'isRaisingHand': false,
             'isDeaf': false,
-            'isTalking': false,
-            'isCameraOn': false,
+            'isTalking': true,
+            'isCameraOn': _isVideo && !_isVideoOff,
             'isScreenSharingOn': false,
           });
           _sendDataChannelMessage('broadcast', {'sequence': 0});
@@ -277,8 +334,8 @@ class RtcCallService extends ChangeNotifier {
             'isSelfMuted': _isMuted,
             'isRaisingHand': false,
             'isDeaf': false,
-            'isTalking': false,
-            'isCameraOn': false,
+            'isTalking': true,
+            'isCameraOn': _isVideo && !_isVideoOff,
             'isScreenSharingOn': false,
           });
           _sendDataChannelMessage('broadcast', {'sequence': 0});
@@ -291,19 +348,26 @@ class RtcCallService extends ChangeNotifier {
       };
     };
 
-    // ── Odoo 18 Fixed Transceiver Order: 1 Audio (SendRecv), 2 Video (RecvOnly) ──
+    // ── Odoo 18 Fixed Transceiver Order: 1 Audio (SendRecv), 2 Video (RecvOnly/SendRecv) ──
     try {
       _audioTransceiver = await _peerConnection!.addTransceiver(
         kind: RTCRtpMediaType.RTCRtpMediaTypeAudio,
         init: RTCRtpTransceiverInit(direction: TransceiverDirection.SendRecv),
       );
-      for (var i = 0; i < 2; i++) {
-        await _peerConnection!.addTransceiver(
-          kind: RTCRtpMediaType.RTCRtpMediaTypeVideo,
-          init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly),
-        );
-      }
-      RtcLogger.instance.log('Configured 3 Unified Plan transceivers (audio, camera, screen).', tag: 'WEBRTC');
+      _videoTransceiver = await _peerConnection!.addTransceiver(
+        kind: RTCRtpMediaType.RTCRtpMediaTypeVideo,
+        init: RTCRtpTransceiverInit(
+          direction: _isVideo ? TransceiverDirection.SendRecv : TransceiverDirection.RecvOnly,
+        ),
+      );
+      await _peerConnection!.addTransceiver(
+        kind: RTCRtpMediaType.RTCRtpMediaTypeVideo,
+        init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly),
+      );
+      RtcLogger.instance.log(
+        'Configured 3 Unified Plan transceivers (audio: SendRecv, camera: ${_isVideo ? 'SendRecv' : 'RecvOnly'}, screen: RecvOnly).',
+        tag: 'WEBRTC',
+      );
     } catch (e) {
       RtcLogger.instance.log('Failed to configure transceivers: $e', tag: 'WEBRTC');
     }
@@ -339,15 +403,35 @@ class RtcCallService extends ChangeNotifier {
     };
     // ────────────────────────────────────────────────────────────────────────
 
-    _peerConnection!.onTrack = (RTCTrackEvent event) {
+    _peerConnection!.onTrack = (RTCTrackEvent event) async {
       RtcLogger.instance.log(
-        'Remote track received: kind=${event.track.kind}',
+        'Remote track received: kind=${event.track.kind}, id=${event.track.id}',
         tag: 'WEBRTC',
       );
-      if (event.track.kind == 'audio') {
-        _remoteStream = event.streams.isNotEmpty ? event.streams[0] : null;
-        notifyListeners();
+      event.track.enabled = true;
+
+      if (_remoteStream == null) {
+        if (event.streams.isNotEmpty) {
+          _remoteStream = event.streams[0];
+        } else {
+          _remoteStream = await createLocalMediaStream('remote_stream_${DateTime.now().millisecondsSinceEpoch}');
+        }
       }
+      _remoteStream!.addTrack(event.track);
+
+      if (event.track.kind == 'video') {
+        await initRenderers();
+        remoteRenderer.srcObject = _remoteStream;
+        RtcLogger.instance.log('Attached remote video stream to remoteRenderer.', tag: 'MEDIA');
+      } else if (event.track.kind == 'audio') {
+        try {
+          await Helper.setSpeakerphoneOn(_isSpeakerOn);
+        } catch (e) {
+          RtcLogger.instance.log('Helper.setSpeakerphoneOn error: $e', tag: 'MEDIA');
+        }
+        RtcLogger.instance.log('Attached remote audio stream, speakerphone: $_isSpeakerOn', tag: 'MEDIA');
+      }
+      notifyListeners();
     };
 
     RtcLogger.instance.log(
@@ -356,60 +440,109 @@ class RtcCallService extends ChangeNotifier {
     );
   }
 
-  /// Create local audio-only stream (getUserMedia({'audio': true, 'video': false}))
-  Future<void> _createLocalAudioStream() async {
+  /// Create local media stream (microphone + optional camera)
+  Future<void> _createLocalMediaStream() async {
     final mediaConstraints = <String, dynamic>{
       'audio': {
         'echoCancellation': true,
         'noiseSuppression': true,
         'autoGainControl': true,
       },
-      'video': false,
+      'video': _isVideo
+          ? {
+              'mandatory': {
+                'minWidth': '640',
+                'minHeight': '480',
+                'minFrameRate': '30',
+              },
+              'facingMode': 'user',
+              'optional': [],
+            }
+          : false,
     };
 
     try {
-      _localStream = await navigator.mediaDevices.getUserMedia(
-        mediaConstraints,
-      );
+      _localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
       _isMuted = false;
+      _isVideoOff = false;
 
-      // Attach audio track to the audio transceiver (Unified Plan)
-      await _attachLocalAudio();
+      for (final t in _localStream!.getAudioTracks()) {
+        t.enabled = true;
+      }
+      for (final t in _localStream!.getVideoTracks()) {
+        t.enabled = true;
+      }
+
+      if (_isVideo) {
+        await initRenderers();
+        localRenderer.srcObject = _localStream;
+      }
+
+      // Attach audio & video tracks to peer transceivers
+      await _attachLocalMedia();
 
       RtcLogger.instance.log(
-        'Local audio stream created and track attached.',
+        'Local media stream created (video: $_isVideo) and attached.',
         tag: 'MEDIA',
       );
     } catch (e) {
       RtcLogger.instance.log(
-        'Failed to acquire microphone stream: $e',
+        'Failed to acquire local userMedia stream: $e',
         tag: 'MEDIA',
       );
     }
   }
 
-  /// Attach local microphone audio track to the Audio transceiver
-  Future<void> _attachLocalAudio() async {
-    final track = _localStream?.getAudioTracks().firstOrNull;
-    if (track == null || _peerConnection == null) return;
-    try {
-      if (_audioTransceiver != null) {
-        await _audioTransceiver!.sender.replaceTrack(track);
-        await _audioTransceiver!.setDirection(TransceiverDirection.SendRecv);
-      } else {
-        final transceivers = await _peerConnection!.getTransceivers();
-        if (transceivers.isNotEmpty) {
-          final audio = transceivers.first;
-          await audio.sender.replaceTrack(track);
-          await audio.setDirection(TransceiverDirection.SendRecv);
+  /// Attach local microphone and camera tracks to the appropriate transceivers
+  Future<void> _attachLocalMedia() async {
+    if (_localStream == null || _peerConnection == null) return;
+
+    // 1. Audio track
+    final audioTrack = _localStream?.getAudioTracks().firstOrNull;
+    if (audioTrack != null) {
+      audioTrack.enabled = !_isMuted;
+      try {
+        if (_audioTransceiver != null) {
+          await _audioTransceiver!.sender.replaceTrack(audioTrack);
+          await _audioTransceiver!.setDirection(TransceiverDirection.SendRecv);
         } else {
-          for (final t in _localStream!.getAudioTracks()) {
-            await _peerConnection?.addTrack(t, _localStream!);
+          final transceivers = await _peerConnection!.getTransceivers();
+          final audio = transceivers.where((t) => t.receiver.track?.kind == 'audio' || t.sender.track?.kind == 'audio').firstOrNull;
+          if (audio != null) {
+            await audio.sender.replaceTrack(audioTrack);
+            await audio.setDirection(TransceiverDirection.SendRecv);
+          } else {
+            await _peerConnection!.addTrack(audioTrack, _localStream!);
           }
         }
+      } catch (e) {
+        RtcLogger.instance.log('Failed to attach audio track: $e', tag: 'MEDIA');
       }
-    } catch (e) {
-      RtcLogger.instance.log('Failed to attach local audio track: $e', tag: 'MEDIA');
+    }
+
+    // 2. Video track
+    if (_isVideo) {
+      final videoTrack = _localStream?.getVideoTracks().firstOrNull;
+      if (videoTrack != null) {
+        videoTrack.enabled = !_isVideoOff;
+        try {
+          if (_videoTransceiver != null) {
+            await _videoTransceiver!.sender.replaceTrack(videoTrack);
+            await _videoTransceiver!.setDirection(TransceiverDirection.SendRecv);
+          } else {
+            final transceivers = await _peerConnection!.getTransceivers();
+            final video = transceivers.where((t) => t.receiver.track?.kind == 'video' || t.sender.track?.kind == 'video').firstOrNull;
+            if (video != null) {
+              await video.sender.replaceTrack(videoTrack);
+              await video.setDirection(TransceiverDirection.SendRecv);
+            } else {
+              await _peerConnection!.addTrack(videoTrack, _localStream!);
+            }
+          }
+        } catch (e) {
+          RtcLogger.instance.log('Failed to attach video track: $e', tag: 'MEDIA');
+        }
+      }
     }
   }
 
@@ -553,8 +686,8 @@ class RtcCallService extends ChangeNotifier {
       // Flush queued remote ICE candidates
       await _flushQueuedCandidates();
 
-      // Attach local microphone audio before building answer
-      await _attachLocalAudio();
+      // Attach local media (audio + video if active) before building answer
+      await _attachLocalMedia();
 
       // Create and send answer (pure Unified Plan)
       final answer = await _peerConnection!.createAnswer();
@@ -710,6 +843,30 @@ class RtcCallService extends ChangeNotifier {
       _status = CallStatus.connected;
       _cancelDiagnosisTimer();
       _startDurationTimer();
+
+      // Configure audio routing & speakerphone on connect
+      try {
+        Helper.setSpeakerphoneOn(_isSpeakerOn);
+        RtcLogger.instance.log('Activated speakerphone: $_isSpeakerOn', tag: 'MEDIA');
+      } catch (e) {
+        RtcLogger.instance.log('Failed to route speakerphone: $e', tag: 'MEDIA');
+      }
+
+      // Ensure remote audio track is unmuted
+      _remoteStream?.getAudioTracks().forEach((track) {
+        track.enabled = true;
+      });
+
+      // Send initial active info frame to Odoo Web client
+      _sendDataChannelMessage('info', {
+        'isSelfMuted': _isMuted,
+        'isRaisingHand': false,
+        'isDeaf': false,
+        'isTalking': true,
+        'isCameraOn': _isVideo && !_isVideoOff,
+        'isScreenSharingOn': false,
+      });
+
       RtcLogger.instance.evaluateDiagnosis(
         isConnected: true,
         iceState: state.name,
@@ -731,6 +888,9 @@ class RtcCallService extends ChangeNotifier {
       _status = CallStatus.connected;
       _cancelDiagnosisTimer();
       _startDurationTimer();
+      try {
+        Helper.setSpeakerphoneOn(_isSpeakerOn);
+      } catch (_) {}
       notifyListeners();
     } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
       _status = CallStatus.failed;
@@ -821,8 +981,8 @@ class RtcCallService extends ChangeNotifier {
       'isSelfMuted': _isMuted,
       'isRaisingHand': false,
       'isDeaf': false,
-      'isTalking': false,
-      'isCameraOn': false,
+      'isTalking': !_isMuted,
+      'isCameraOn': _isVideo && !_isVideoOff,
       'isScreenSharingOn': false,
     });
 
@@ -838,6 +998,51 @@ class RtcCallService extends ChangeNotifier {
       tag: 'MEDIA',
     );
     notifyListeners();
+  }
+
+  /// Toggle camera video
+  void toggleVideo() {
+    _isVideoOff = !_isVideoOff;
+    _localStream?.getVideoTracks().forEach((track) {
+      track.enabled = !_isVideoOff;
+    });
+
+    _sendDataChannelMessage('info', {
+      'isSelfMuted': _isMuted,
+      'isRaisingHand': false,
+      'isDeaf': false,
+      'isTalking': !_isMuted,
+      'isCameraOn': _isVideo && !_isVideoOff,
+      'isScreenSharingOn': false,
+    });
+
+    if (_selfSessionId != null) {
+      _odooApi.updateAndBroadcast(
+        sessionId: _selfSessionId!,
+        values: {'is_camera_on': _isVideo && !_isVideoOff},
+      );
+    }
+
+    RtcLogger.instance.log(
+      'Camera video toggled: isVideoOff=$_isVideoOff',
+      tag: 'MEDIA',
+    );
+    notifyListeners();
+  }
+
+  /// Flip/switch camera (front/back)
+  Future<void> switchCamera() async {
+    if (_localStream != null) {
+      final videoTracks = _localStream!.getVideoTracks();
+      if (videoTracks.isNotEmpty) {
+        try {
+          await Helper.switchCamera(videoTracks[0]);
+          RtcLogger.instance.log('Camera switched front/back.', tag: 'MEDIA');
+        } catch (e) {
+          RtcLogger.instance.log('Failed to switch camera: $e', tag: 'MEDIA');
+        }
+      }
+    }
   }
 
   /// Toggle speakerphone
@@ -892,8 +1097,13 @@ class RtcCallService extends ChangeNotifier {
     } catch (_) {}
     _dataChannel = null;
     _audioTransceiver = null;
+    _videoTransceiver = null;
 
-    // 4. Stop and dispose local audio tracks
+    // 4. Detach video renderers
+    localRenderer.srcObject = null;
+    remoteRenderer.srcObject = null;
+
+    // 5. Stop and dispose local tracks
     if (_localStream != null) {
       for (final track in _localStream!.getTracks()) {
         track.stop();
@@ -902,19 +1112,27 @@ class RtcCallService extends ChangeNotifier {
       _localStream = null;
     }
 
-    // 5. Dispose peer connection
+    if (_remoteStream != null) {
+      for (final track in _remoteStream!.getTracks()) {
+        track.stop();
+      }
+      await _remoteStream!.dispose();
+      _remoteStream = null;
+    }
+
+    // 6. Dispose peer connection
     if (_peerConnection != null) {
       await _peerConnection!.close();
       await _peerConnection!.dispose();
       _peerConnection = null;
     }
 
-    // 6. Leave call on Odoo server
+    // 7. Leave call on Odoo server
     if (_channelId != 0) {
       await _odooApi.leaveCall(channelId: _channelId);
     }
 
-    // 7. Disconnect signaling bus
+    // 8. Disconnect signaling bus
     await _signalingService.disconnect();
 
     _queuedRemoteCandidates.clear();
@@ -933,6 +1151,8 @@ class RtcCallService extends ChangeNotifier {
   @override
   void dispose() {
     hangUp();
+    localRenderer.dispose();
+    remoteRenderer.dispose();
     super.dispose();
   }
 }

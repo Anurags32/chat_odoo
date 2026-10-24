@@ -167,7 +167,11 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
       targetChannelId = calleePartnerId;
     }
 
-    final success = await _rtcService.joinCall(channelId: targetChannelId);
+    final isVideo = callType == CallType.video;
+    final success = await _rtcService.joinCall(
+      channelId: targetChannelId,
+      isVideo: isVideo,
+    );
     if (!mounted) return success;
 
     if (success) {
@@ -260,7 +264,12 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
     if (mounted) {
       state = state.copyWith(status: CallState.connecting);
     }
-    final success = await _rtcService.joinCall(channelId: channelId, createOfferIfFirst: false);
+    final isVideo = state.activeCall?.callType == CallType.video;
+    final success = await _rtcService.joinCall(
+      channelId: channelId,
+      isVideo: isVideo,
+      createOfferIfFirst: false,
+    );
     if (!mounted) return success;
     return success;
   }
@@ -313,12 +322,14 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
   }
 
   void toggleVideo() {
+    _rtcService.toggleVideo();
     _webrtc.toggleVideo();
     if (!mounted) return;
-    state = state.copyWith(isVideoOff: _webrtc.isVideoOff);
+    state = state.copyWith(isVideoOff: _rtcService.isVideoOff);
   }
 
   void switchCamera() {
+    _rtcService.switchCamera();
     _webrtc.switchCamera();
   }
 

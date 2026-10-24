@@ -54,7 +54,7 @@ class CallKitService {
       },
       headers: <String, dynamic>{'apiKey': '123#@'},
       android: const AndroidParams(
-        isCustomNotification: true,
+        isCustomNotification: false,
         isShowLogo: false,
         ringtonePath: 'system_ringtone_default',
         backgroundColor: '#095544',

@@ -28,6 +28,10 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(rtcCallServiceProvider).initRenderers();
+    });
+
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
@@ -54,7 +58,7 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen>
   Widget build(BuildContext context) {
     final callState = ref.watch(callManagerProvider);
     final callManager = ref.read(callManagerProvider.notifier);
-    final webrtc = ref.read(webrtcServiceProvider);
+    final rtcCallService = ref.watch(rtcCallServiceProvider);
     final call = callState.activeCall;
 
     // Pop screen when call ends or is cancelled/rejected
@@ -84,7 +88,7 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen>
           Positioned.fill(
             child: callState.status == CallState.connected
                 ? RTCVideoView(
-                    webrtc.remoteRenderer,
+                    rtcCallService.remoteRenderer,
                     objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
                   )
                 : Container(
@@ -343,7 +347,7 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen>
                               ),
                             )
                           : RTCVideoView(
-                              webrtc.localRenderer,
+                              rtcCallService.localRenderer,
                               mirror: true,
                               objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
                             ),
