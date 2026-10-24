@@ -24,10 +24,28 @@ class CallConfig {
   /// Fallback STUN server when Odoo returns empty iceServers
   static const List<Map<String, dynamic>> stunFallback = [
     {
-      'urls': ['stun:stun.l.google.com:19302'],
+      'urls': [
+        'stun:stun.l.google.com:19302',
+        'stun:stun1.l.google.com:19302',
+        'stun:stun2.l.google.com:19302',
+      ],
+    },
+  ];
+
+  /// Fallback TURN servers used when Odoo iceServers do not include TURN
+  static const List<Map<String, dynamic>> turnFallback = [
+    {
+      'urls': [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turn:openrelay.metered.ca:443?transport=tcp',
+      ],
+      'username': 'openrelayproject',
+      'credential': 'openrelayproject',
     },
   ];
 
   /// Timeout in seconds before issuing an automatic ICE diagnosis
   static const int iceTimeoutSeconds = 20;
 }
+

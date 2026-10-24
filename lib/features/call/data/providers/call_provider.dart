@@ -137,6 +137,7 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
     state = state.copyWith(
       status: mappedStatus,
       isMuted: _rtcService.isMuted,
+      isVideoOff: _rtcService.isVideoOff,
       isSpeakerOn: _rtcService.isSpeakerOn,
       durationSeconds: _rtcService.callDuration,
     );
@@ -268,7 +269,6 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
     final success = await _rtcService.joinCall(
       channelId: channelId,
       isVideo: isVideo,
-      createOfferIfFirst: false,
     );
     if (!mounted) return success;
     return success;
@@ -331,6 +331,10 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
   void switchCamera() {
     _rtcService.switchCamera();
     _webrtc.switchCamera();
+  }
+
+  void toggleScreenShare() {
+    _rtcService.toggleScreenShare();
   }
 
   @override

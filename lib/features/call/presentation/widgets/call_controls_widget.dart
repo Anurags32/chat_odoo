@@ -6,9 +6,11 @@ class CallControlsWidget extends StatelessWidget {
   final bool isMuted;
   final bool isVideoOff;
   final bool isSpeakerOn;
+  final bool isScreenSharing;
   final VoidCallback onToggleMute;
   final VoidCallback? onToggleVideo;
   final VoidCallback? onSwitchCamera;
+  final VoidCallback? onToggleScreenShare;
   final VoidCallback onToggleSpeaker;
   final VoidCallback onEndCall;
 
@@ -18,9 +20,11 @@ class CallControlsWidget extends StatelessWidget {
     required this.isMuted,
     this.isVideoOff = false,
     required this.isSpeakerOn,
+    this.isScreenSharing = false,
     required this.onToggleMute,
     this.onToggleVideo,
     this.onSwitchCamera,
+    this.onToggleScreenShare,
     required this.onToggleSpeaker,
     required this.onEndCall,
   });
@@ -96,6 +100,20 @@ class CallControlsWidget extends StatelessWidget {
                   onPressed: onSwitchCamera,
                   tooltip: 'Flip Camera',
                 ),
+                if (onToggleScreenShare != null) ...[
+                  const SizedBox(width: 14),
+                  // Screen Share Button
+                  _ControlButton(
+                    icon: isScreenSharing
+                        ? Icons.stop_screen_share_rounded
+                        : Icons.screen_share_rounded,
+                    isActive: isScreenSharing,
+                    activeColor: Colors.deepPurpleAccent,
+                    activeIconColor: Colors.white,
+                    onPressed: onToggleScreenShare,
+                    tooltip: isScreenSharing ? 'Stop Screen Share' : 'Share Screen',
+                  ),
+                ],
               ],
 
               const SizedBox(width: 18),

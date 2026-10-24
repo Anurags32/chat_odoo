@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../data/models/call_model.dart';
 import '../../data/providers/call_provider.dart';
+import '../../data/services/rtc_call_service.dart';
 import '../widgets/call_controls_widget.dart';
 
 class VideoCallScreen extends ConsumerStatefulWidget {
@@ -84,107 +85,9 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen>
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // 1. Fullscreen Remote Video Stream or Waiting Screen
+          // 1. Fullscreen Remote Video Stream, Mesh Grid or Waiting Screen
           Positioned.fill(
-            child: callState.status == CallState.connected
-                ? RTCVideoView(
-                    rtcCallService.remoteRenderer,
-                    objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-                  )
-                : Container(
-                    decoration: const BoxDecoration(
-                      gradient: RadialGradient(
-                        center: Alignment(0, -0.2),
-                        radius: 1.2,
-                        colors: [
-                          Color(0xFF1E1B4B),
-                          Color(0xFF0F172A),
-                          Color(0xFF030712),
-                        ],
-                      ),
-                    ),
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          ScaleTransition(
-                            scale: _pulseAnimation,
-                            child: Container(
-                              width: 130,
-                              height: 130,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                gradient: AppColors.buttonGradient,
-                                border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.35),
-                                  width: 3,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppColors.purple1.withValues(alpha: 0.45),
-                                    blurRadius: 35,
-                                    spreadRadius: 8,
-                                  ),
-                                ],
-                              ),
-                              child: Center(
-                                child: Text(
-                                  partnerName.isNotEmpty ? partnerName[0].toUpperCase() : '?',
-                                  style: const TextStyle(
-                                    fontSize: 52,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 28),
-                          Text(
-                            partnerName,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.greenAccent),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Text(
-                                  callState.status == CallState.ringing
-                                      ? (callState.isIncoming ? 'Incoming Video Call...' : 'Ringing...')
-                                      : 'Connecting WebRTC Video...',
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+            child: _buildRemoteVideoContent(rtcCallService, callState, partnerName),
           ),
 
           // 2. Top Header Bar (Translucent Glass with Back, Name, Timer, Quality)
@@ -387,9 +290,11 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen>
                 isMuted: callState.isMuted,
                 isVideoOff: callState.isVideoOff,
                 isSpeakerOn: callState.isSpeakerOn,
+                isScreenSharing: rtcCallService.isScreenSharing,
                 onToggleMute: callManager.toggleMute,
                 onToggleVideo: callManager.toggleVideo,
                 onSwitchCamera: callManager.switchCamera,
+                onToggleScreenShare: rtcCallService.toggleScreenShare,
                 onToggleSpeaker: callManager.toggleSpeaker,
                 onEndCall: () {
                   if (callState.isIncoming && callState.status == CallState.ringing) {
@@ -407,6 +312,221 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen>
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildRemoteVideoContent(
+    RtcCallService rtcCallService,
+    CallStateData callState,
+    String partnerName,
+  ) {
+    if (callState.status != CallState.connected) {
+      return _buildWaitingPlaceholder(partnerName, callState);
+    }
+
+    final peers = rtcCallService.peerList;
+    if (peers.isEmpty) {
+      return _buildWaitingPlaceholder(partnerName, callState);
+    }
+
+    if (peers.length == 1) {
+      final peer = peers.first;
+      if (peer.isCameraActive) {
+        return RTCVideoView(
+          peer.remoteRenderer,
+          objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+        );
+      } else {
+        return _buildAudioOnlyPeer(peer, partnerName);
+      }
+    }
+
+    // Mesh Grid for 2 or more remote peers
+    return Container(
+      color: const Color(0xFF0F172A),
+      padding: const EdgeInsets.only(top: 80, bottom: 120, left: 10, right: 10),
+      child: GridView.builder(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: peers.length <= 4 ? 2 : 3,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+          childAspectRatio: 0.8,
+        ),
+        itemCount: peers.length,
+        itemBuilder: (context, index) {
+          final peer = peers[index];
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              color: const Color(0xFF1E293B),
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: peer.isCameraActive
+                        ? RTCVideoView(
+                            peer.remoteRenderer,
+                            objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                          )
+                        : _buildAudioOnlyPeer(peer, 'Participant #${peer.remoteSessionId}'),
+                  ),
+                  Positioned(
+                    bottom: 8,
+                    left: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (peer.isMuted) ...[
+                            const Icon(Icons.mic_off_rounded, size: 12, color: Colors.redAccent),
+                            const SizedBox(width: 4),
+                          ],
+                          Text(
+                            'Session #${peer.remoteSessionId}',
+                            style: const TextStyle(color: Colors.white, fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildAudioOnlyPeer(dynamic peer, String name) {
+    return Container(
+      color: const Color(0xFF0F172A),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircleAvatar(
+              radius: 44,
+              backgroundColor: AppColors.purple1,
+              child: Text(
+                name.isNotEmpty ? name[0].toUpperCase() : '?',
+                style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              name,
+              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Camera Off (Audio Only)',
+              style: TextStyle(color: Colors.white60, fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWaitingPlaceholder(String partnerName, CallStateData callState) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: RadialGradient(
+          center: Alignment(0, -0.2),
+          radius: 1.2,
+          colors: [
+            Color(0xFF1E1B4B),
+            Color(0xFF0F172A),
+            Color(0xFF030712),
+          ],
+        ),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ScaleTransition(
+              scale: _pulseAnimation,
+              child: Container(
+                width: 130,
+                height: 130,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: AppColors.buttonGradient,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.35),
+                    width: 3,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.purple1.withValues(alpha: 0.45),
+                      blurRadius: 35,
+                      spreadRadius: 8,
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Text(
+                    partnerName.isNotEmpty ? partnerName[0].toUpperCase() : '?',
+                    style: const TextStyle(
+                      fontSize: 52,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 28),
+            Text(
+              partnerName,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.greenAccent),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    callState.status == CallState.ringing
+                        ? (callState.isIncoming ? 'Incoming Video Call...' : 'Ringing...')
+                        : 'Connecting WebRTC Video...',
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

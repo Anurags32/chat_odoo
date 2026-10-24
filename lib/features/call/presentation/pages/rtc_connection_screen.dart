@@ -4,6 +4,7 @@ import '../../../../config.dart';
 import '../../data/providers/call_provider.dart';
 import '../../data/services/rtc_call_service.dart';
 import 'audio_call_screen.dart';
+import 'video_call_screen.dart';
 import 'rtc_debug_log_screen.dart';
 
 class RtcConnectionScreen extends ConsumerStatefulWidget {
@@ -88,7 +89,7 @@ class _RtcConnectionScreenState extends ConsumerState<RtcConnectionScreen> {
     }
   }
 
-  Future<void> _handleJoinCall() async {
+  Future<void> _handleJoinCall({bool isVideo = false}) async {
     final odooApi = ref.read(odooApiProvider);
     if (odooApi.sessionCookie == null || odooApi.sessionCookie!.isEmpty) {
       // Auto-authenticate first
@@ -116,20 +117,33 @@ class _RtcConnectionScreenState extends ConsumerState<RtcConnectionScreen> {
     setState(() => _isJoiningCall = true);
     final rtcCallService = ref.read(rtcCallServiceProvider);
 
-    final joined = await rtcCallService.joinCall(channelId: channelId);
+    final joined = await rtcCallService.joinCall(channelId: channelId, isVideo: isVideo);
     setState(() => _isJoiningCall = false);
 
     if (joined && mounted) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => AudioCallScreen(
-            extra: {
-              'channel_id': channelId,
-              'callee_name': 'Channel #$channelId Voice Call',
-            },
+      if (isVideo) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => VideoCallScreen(
+              extra: {
+                'channel_id': channelId,
+                'callee_name': 'Channel #$channelId Video Call',
+              },
+            ),
           ),
-        ),
-      );
+        );
+      } else {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => AudioCallScreen(
+              extra: {
+                'channel_id': channelId,
+                'callee_name': 'Channel #$channelId Voice Call',
+              },
+            ),
+          ),
+        );
+      }
     }
   }
 
@@ -306,7 +320,7 @@ class _RtcConnectionScreenState extends ConsumerState<RtcConnectionScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
-                      onPressed: _isJoiningCall ? null : _handleJoinCall,
+                      onPressed: _isJoiningCall ? null : () => _handleJoinCall(isVideo: false),
                       icon: _isJoiningCall
                           ? const SizedBox(
                               width: 16,
@@ -315,12 +329,28 @@ class _RtcConnectionScreenState extends ConsumerState<RtcConnectionScreen> {
                             )
                           : const Icon(Icons.call_rounded, color: Colors.white),
                       label: Text(
-                        _isJoiningCall ? 'Connecting...' : '2. Join Voice Call',
+                        _isJoiningCall ? 'Connecting...' : '2. Join Voice',
                         style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                       ),
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 12),
+
+              // Join Video Call Button
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF7C3AED), // Purple Accent
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: _isJoiningCall ? null : () => _handleJoinCall(isVideo: true),
+                icon: const Icon(Icons.videocam_rounded, color: Colors.white),
+                label: const Text(
+                  '3. Join Video Call (HD Camera + Mesh)',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 15),
+                ),
               ),
               const SizedBox(height: 16),
 

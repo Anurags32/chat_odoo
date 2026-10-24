@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/providers/call_provider.dart';
 import '../../data/services/rtc_call_service.dart';
 import 'rtc_debug_log_screen.dart';
+import 'video_call_screen.dart';
 
 class AudioCallScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic>? extra;
@@ -311,6 +312,29 @@ class _AudioCallScreenState extends ConsumerState<AudioCallScreen>
                         isActive: rtcCallService.isSpeakerOn,
                         activeColor: const Color(0xFF38BDF8),
                         onPressed: () => rtcCallService.toggleSpeaker(),
+                      ),
+
+                      // Video Upgrade Button
+                      _buildControlButton(
+                        icon: Icons.videocam_rounded,
+                        label: 'Video',
+                        isActive: rtcCallService.isVideo,
+                        activeColor: const Color(0xFF10B981),
+                        onPressed: () async {
+                          await rtcCallService.toggleVideo();
+                          if (context.mounted && rtcCallService.isVideo) {
+                            Navigator.of(context).pushReplacement(
+                              MaterialPageRoute(
+                                builder: (_) => VideoCallScreen(
+                                  extra: {
+                                    'channel_id': channelId,
+                                    'callee_name': passedName,
+                                  },
+                                ),
+                              ),
+                            );
+                          }
+                        },
                       ),
 
                       // Debug Logs Button
