@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../../../core/network/dio_client.dart';
 import '../../../../core/network/api_constants.dart';
 import '../../../../core/network/api_response.dart';
+import '../../../../core/network/odoo_bus_service.dart';
 import '../../../../core/storage/storage_service.dart';
 import '../../domain/models/login_response.dart';
 import '../../domain/models/api_user_model.dart';
@@ -61,6 +62,9 @@ class AuthApiService {
           db: ApiConstants.database,
         );
 
+        // Step 1b: Connect to Odoo WebSocket Bus
+        OdooBusService.instance.connect();
+
         // Step 2: Sync FCM token with database
         final fcmToken = await _storageService.getFcmToken();
         if (fcmToken != null && fcmToken.isNotEmpty) {
@@ -100,6 +104,7 @@ class AuthApiService {
   // Logout
   Future<ApiResponse<void>> logout() async {
     try {
+      await OdooBusService.instance.disconnect();
       final response = await _dioClient.post(ApiConstants.logout);
 
       await _storageService.clearAll();
@@ -199,10 +204,21 @@ class AuthApiService {
 
       String? sessionId;
 
-      // 1. Try extracting session_id from response body (Odoo json-rpc result)
+      // 1. Try extracting session_id and partner_id from response body (Odoo json-rpc result)
       if (response.data is Map && response.data['result'] is Map) {
         final result = response.data['result'] as Map;
         sessionId = result['session_id'] as String?;
+        final pId = result['partner_id'] as int?;
+        final uId = result['uid'] as int?;
+        final uName = result['name'] as String?;
+        if (pId != null) {
+          await _storageService.saveUserData(
+            userId: uId ?? 1,
+            userName: uName ?? login,
+            expiryTime: '',
+            partnerId: pId,
+          );
+        }
       }
 
       // 2. Try extracting from Set-Cookie header if not in body

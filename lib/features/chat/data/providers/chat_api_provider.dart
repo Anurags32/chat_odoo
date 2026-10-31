@@ -50,7 +50,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
   ChatNotifier(this._chatApiService) : super(ChatState());
 
-  Future<void> createChannel(int partnerId) async {
+  Future<void> createChannel(int partnerId, {int? channelId}) async {
     // 1. Try loading cached messages first for offline instant access
     final cached = await StorageService.instance.getCachedMessages(partnerId);
     if (cached != null && cached.isNotEmpty) {
@@ -62,7 +62,10 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
     state = state.copyWith(isLoading: state.messages.isEmpty, error: null);
 
-    final response = await _chatApiService.createChannel(partnerId: partnerId);
+    final response = await _chatApiService.createChannel(
+      partnerId: partnerId,
+      channelId: channelId,
+    );
 
     if (response.success && response.data != null) {
       final channel = response.data!.channel;
@@ -107,7 +110,10 @@ class ChatNotifier extends StateNotifier<ChatState> {
     state = state.copyWith(isPartnerTyping: typing);
   }
 
-  Future<bool> sendMessage(String body, {List<MessageAttachment>? attachments}) async {
+  Future<bool> sendMessage(
+    String body, {
+    List<MessageAttachment>? attachments,
+  }) async {
     if (state.channel == null) {
       state = state.copyWith(error: 'No active channel');
       return false;

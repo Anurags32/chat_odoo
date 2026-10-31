@@ -19,33 +19,35 @@ class CallConfig {
   static const String defaultPassword = 'admin';
 
   /// Default Odoo Discuss Channel ID where Admin and Buddy connect
-  static const int defaultChannelId = 1;
+  static const int defaultChannelId = 4;
 
-  /// Fallback STUN server when Odoo returns empty iceServers
+  /// Fallback STUN servers when Odoo mail.ice.server returns empty
   static const List<Map<String, dynamic>> stunFallback = [
     {
       'urls': [
         'stun:stun.l.google.com:19302',
         'stun:stun1.l.google.com:19302',
         'stun:stun2.l.google.com:19302',
+        'stun:stun.cloudflare.com:3478',
       ],
     },
   ];
 
-  /// Fallback TURN servers used when Odoo iceServers do not include TURN
+  /// Fallback TURN servers used when Odoo mail.ice.server does not provide active TURN credentials.
+  /// Configure your Coturn, Metered, or Twilio TURN credentials here or in Odoo's mail.ice.server table.
   static const List<Map<String, dynamic>> turnFallback = [
-    {
-      'urls': [
-        'turn:openrelay.metered.ca:80',
-        'turn:openrelay.metered.ca:443',
-        'turn:openrelay.metered.ca:443?transport=tcp',
-      ],
-      'username': 'openrelayproject',
-      'credential': 'openrelayproject',
-    },
+    // Example Coturn or custom TURN relay configuration:
+    // {
+    //   'urls': [
+    //     'turn:your-turn-domain.com:3478?transport=udp',
+    //     'turn:your-turn-domain.com:3478?transport=tcp',
+    //     'turns:your-turn-domain.com:5349?transport=tcp',
+    //   ],
+    //   'username': 'your-turn-username',
+    //   'credential': 'your-turn-password',
+    // },
   ];
 
   /// Timeout in seconds before issuing an automatic ICE diagnosis
   static const int iceTimeoutSeconds = 20;
 }
-

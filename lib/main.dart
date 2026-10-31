@@ -8,6 +8,7 @@ import 'core/theme/app_theme.dart';
 import 'core/router/app_router.dart';
 import 'core/storage/storage_service.dart';
 import 'core/services/notification_service.dart';
+import 'core/network/odoo_bus_service.dart';
 
 import 'features/call/presentation/pages/incoming_call_dialog.dart';
 import 'features/call/data/services/callkit_service.dart';
@@ -56,6 +57,13 @@ class _MyAppState extends ConsumerState<MyApp> {
       ref.read(callKitServiceProvider).initialize();
       ref.read(pushNotificationServiceProvider).initialize();
       await NotificationService.instance.checkAppLaunchNotification();
+
+      // Connect to Odoo WebSocket Bus if session cookie exists
+      final cookie = await StorageService.instance.getSessionCookie();
+      if (cookie != null && cookie.isNotEmpty) {
+        debugPrint('[MAIN] User session active, connecting to Odoo Bus...');
+        OdooBusService.instance.connect();
+      }
     });
   }
 

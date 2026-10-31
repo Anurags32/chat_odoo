@@ -58,13 +58,20 @@ class RtcCallService extends ChangeNotifier {
   MediaStream? get localStream => _localStream;
 
   Map<int, RtcPeerSession> get peers => _peers;
-  List<RtcPeerSession> get peerList => _peers.values.toList();
-  RtcPeerSession? get primaryPeer => _peers.values.firstOrNull;
+  List<RtcPeerSession> get peerList =>
+      _peers.values.where((p) => p.remoteSessionId != _selfSessionId).toList();
+  RtcPeerSession? get primaryPeer {
+    for (final p in _peers.values) {
+      if (p.remoteSessionId != _selfSessionId) return p;
+    }
+    return _peers.values.firstOrNull;
+  }
 
   String get iceConnectionState => primaryPeer?.iceConnectionState ?? 'new';
   String get peerConnectionState => primaryPeer?.peerConnectionState ?? 'new';
 
-  RTCVideoRenderer get remoteRenderer => primaryPeer?.remoteRenderer ?? localRenderer;
+  RTCVideoRenderer get remoteRenderer =>
+      primaryPeer?.remoteRenderer ?? localRenderer;
 
   RtcCallService({
     required OdooApi odooApi,
@@ -86,7 +93,10 @@ class RtcCallService extends ChangeNotifier {
     try {
       await localRenderer.initialize();
       _localRendererInitialized = true;
-      RtcLogger.instance.log('Local RTCVideoRenderer initialized.', tag: 'MEDIA');
+      RtcLogger.instance.log(
+        'Local RTCVideoRenderer initialized.',
+        tag: 'MEDIA',
+      );
     } catch (e) {
       RtcLogger.instance.log('Failed to init local renderer: $e', tag: 'MEDIA');
     }
@@ -107,7 +117,10 @@ class RtcCallService extends ChangeNotifier {
     bool createOfferIfFirst = true,
   }) async {
     if (_isJoining) {
-      RtcLogger.instance.log('Already in joinCall flow, ignoring duplicate invocation.', tag: 'CALL');
+      RtcLogger.instance.log(
+        'Already in joinCall flow, ignoring duplicate invocation.',
+        tag: 'CALL',
+      );
       return false;
     }
 
@@ -193,16 +206,26 @@ class RtcCallService extends ChangeNotifier {
       await _acquireLocalMedia();
 
       // 7. Track remote sessions in channel and initialize peer connection mesh
+      final selfId = _selfSessionId!;
       final remoteSessionIds = <int>[];
       for (final s in rtcSessions) {
-        if (s is Map && s['id'] != null && s['id'] != _selfSessionId) {
-          remoteSessionIds.add(s['id'] as int);
+        int? id;
+        if (s is Map && s['id'] != null) {
+          id = int.tryParse(s['id'].toString());
+        } else if (s is int) {
+          id = s;
+        }
+        if (id != null && id > 0 && id != selfId) {
+          remoteSessionIds.add(id);
         }
       }
 
-      RtcLogger.instance.log('Discovered initial remote sessions: $remoteSessionIds', tag: 'CALL');
+      RtcLogger.instance.log(
+        'Discovered initial remote sessions: $remoteSessionIds (excluding self $selfId)',
+        tag: 'CALL',
+      );
 
-      // Initialize mesh connections for all existing participants
+      // Initialize mesh connections strictly for other participants
       for (final remoteId in remoteSessionIds) {
         await _getOrCreatePeer(remoteId, iceServers);
       }
@@ -224,59 +247,143 @@ class RtcCallService extends ChangeNotifier {
     }
   }
 
-  /// Build unified ICE servers list merging Odoo servers + STUN + TURN fallback
+  /// Build unified ICE servers list merging Odoo mail.ice.server + STUN + TURN fallback
   List<Map<String, dynamic>> _buildIceServers(List<dynamic> fromOdoo) {
     final result = <Map<String, dynamic>>[];
-    bool hasTurnServer = false;
+    bool hasValidTurnServer = false;
 
     for (final item in fromOdoo) {
       if (item is Map) {
         final serverMap = Map<String, dynamic>.from(item);
-        result.add(serverMap);
-        final urls = serverMap['urls'];
-        if (urls is List && urls.any((u) => u.toString().startsWith('turn:'))) {
-          hasTurnServer = true;
-        } else if (serverMap['url']?.toString().startsWith('turn:') == true) {
-          hasTurnServer = true;
+
+        // Odoo mail.ice.server returns: {'urls': '%s:%s' % (server_type, uri)}
+        // or Twilio returns: {'urls': [...], 'url': '...'}
+        final dynamic rawUrls = serverMap['urls'] ?? serverMap['url'];
+        final List<String> urlsList = [];
+        if (rawUrls is String && rawUrls.trim().isNotEmpty) {
+          urlsList.add(rawUrls.trim());
+        } else if (rawUrls is List) {
+          for (final u in rawUrls) {
+            if (u != null && u.toString().trim().isNotEmpty) {
+              urlsList.add(u.toString().trim());
+            }
+          }
         }
+
+        if (urlsList.isEmpty) continue;
+
+        final username = serverMap['username']?.toString().trim();
+        final credential = serverMap['credential']?.toString().trim();
+
+        final hasTurnUrl = urlsList.any(
+          (u) => u.startsWith('turn:') || u.startsWith('turns:'),
+        );
+
+        if (hasTurnUrl) {
+          final pointsToGoogleStun = urlsList.any(
+            (u) => u.contains('stun.l.google.com'),
+          );
+          final hasCredentials =
+              username != null &&
+              username.isNotEmpty &&
+              credential != null &&
+              credential.isNotEmpty;
+
+          if (pointsToGoogleStun || !hasCredentials) {
+            RtcLogger.instance.log(
+              'Filtered invalid TURN server from Odoo (no credentials or Google STUN host): $urlsList',
+              tag: 'ICE-CONFIG',
+            );
+            // If it was stun.l.google.com with turn: prefix, convert it to a valid STUN server
+            if (pointsToGoogleStun) {
+              result.add({
+                'urls': ['stun:stun.l.google.com:19302'],
+              });
+            }
+            continue;
+          }
+
+          hasValidTurnServer = true;
+        }
+
+        final entry = <String, dynamic>{'urls': urlsList};
+        if (username != null && username.isNotEmpty)
+          entry['username'] = username;
+        if (credential != null && credential.isNotEmpty)
+          entry['credential'] = credential;
+        result.add(entry);
       }
     }
 
-    if (result.isEmpty) {
+    // Always ensure high-reliability STUN servers exist if none provided
+    final hasStun = result.any(
+      (s) => s['urls']?.toString().contains('stun:') == true,
+    );
+    if (!hasStun) {
       result.addAll(CallConfig.stunFallback);
     }
 
-    // Append fallback TURN if Odoo did not provide one
-    if (!hasTurnServer) {
-      RtcLogger.instance.log('No TURN server from Odoo. Appending fallback TURN list...', tag: 'ICE-CONFIG');
-      result.addAll(CallConfig.turnFallback);
+    // Append fallback TURN if Odoo did not provide a valid TURN server with credentials
+    if (!hasValidTurnServer) {
+      if (CallConfig.turnFallback.isNotEmpty) {
+        RtcLogger.instance.log(
+          'No valid TURN server from Odoo mail.ice.server. Appending fallback TURN relay...',
+          tag: 'ICE-CONFIG',
+        );
+        result.addAll(CallConfig.turnFallback);
+      } else {
+        RtcLogger.instance.log(
+          'WARNING: No valid TURN credentials in Odoo mail.ice.server or CallConfig.turnFallback! Direct connections across symmetric NATs may fail.',
+          tag: 'ICE-CONFIG',
+        );
+      }
     }
 
-    RtcLogger.instance.log('Configured ${result.length} ICE server(s) (hasTurn: $hasTurnServer).', tag: 'ICE-CONFIG');
+    RtcLogger.instance.log(
+      'Configured ${result.length} ICE server(s) (hasValidTurn: $hasValidTurnServer).',
+      tag: 'ICE-CONFIG',
+    );
     return result;
   }
 
+  static int _sequenceCounter = 0;
+  static int _nextSequence() => ++_sequenceCounter;
+
   /// Create and configure a PeerSession for a remote participant
-  Future<RtcPeerSession> _getOrCreatePeer(int remoteSessionId, [List<Map<String, dynamic>>? iceServers]) async {
+  Future<RtcPeerSession?> _getOrCreatePeer(
+    int remoteSessionId, [
+    List<Map<String, dynamic>>? iceServers,
+    bool addTransceivers = true,
+  ]) async {
+    final selfId = _selfSessionId ?? 0;
+    if (remoteSessionId <= 0 || (selfId > 0 && remoteSessionId == selfId)) {
+      RtcLogger.instance.log(
+        'Refusing to create PeerConnection for self/invalid session: $remoteSessionId (selfSessionId: $selfId)',
+        tag: 'PEER',
+      );
+      return null;
+    }
+
     if (_peers.containsKey(remoteSessionId)) {
       return _peers[remoteSessionId]!;
     }
 
     final servers = iceServers ?? _buildIceServers([]);
-    final config = {
-      'iceServers': servers,
-      'sdpSemantics': 'unified-plan',
-    };
+    final config = {'iceServers': servers, 'sdpSemantics': 'unified-plan'};
 
-    RtcLogger.instance.log('Creating PeerConnection for session $remoteSessionId...', tag: 'WEBRTC');
+    RtcLogger.instance.log(
+      'Creating PeerConnection for session $remoteSessionId (selfSessionId: $selfId, addTransceivers: $addTransceivers)...',
+      tag: 'WEBRTC',
+    );
     final pc = await createPeerConnection(config);
 
-    // Polite Peer logic mirroring Odoo web: hasPriority = remoteSessionId > selfSessionId
-    final hasPriority = remoteSessionId > (_selfSessionId ?? 0);
+    // Polite Peer logic mirroring Odoo web peer_to_peer.js:
+    // hasPriority = remoteSessionId > selfSessionId
+    final hasPriority = remoteSessionId > selfId;
 
     final peer = RtcPeerSession(
       remoteSessionId: remoteSessionId,
-      selfSessionId: _selfSessionId ?? 0,
+      selfSessionId: selfId,
       connection: pc,
       hasPriority: hasPriority,
     );
@@ -295,53 +402,38 @@ class RtcCallService extends ChangeNotifier {
       peer.dataChannel = dc;
 
       dc.onDataChannelState = (state) {
-        RtcLogger.instance.log('DataChannel state [$remoteSessionId]: $state', tag: 'DATA-CHANNEL');
+        RtcLogger.instance.log(
+          'DataChannel state [$remoteSessionId]: $state',
+          tag: 'DATA-CHANNEL',
+        );
         if (state == RTCDataChannelState.RTCDataChannelOpen) {
           _sendDataChannelInfo(peer);
-          _sendDataChannelMessage(peer, 'broadcast', {'sequence': peer.sequence});
+          _sendDataChannelMessage(peer, 'broadcast', {
+            'sequence': peer.sequence,
+          });
         }
       };
 
       dc.onMessage = (msg) {
-        RtcLogger.instance.log('DataChannel message from $remoteSessionId: ${msg.text}', tag: 'DATA-CHANNEL');
+        RtcLogger.instance.log(
+          'DataChannel message from $remoteSessionId: ${msg.text}',
+          tag: 'DATA-CHANNEL',
+        );
         _handleDataChannelMessage(peer, msg.text);
       };
     } catch (e) {
-      RtcLogger.instance.log('Failed to create DataChannel for peer $remoteSessionId: $e', tag: 'DATA-CHANNEL');
-    }
-
-    // ── 2. Add 3 Transceivers in EXACT ORDER matching Odoo 18 web client ────
-    // Order: [audio, camera video, screen video]
-    try {
-      await pc.addTransceiver(
-        kind: RTCRtpMediaType.RTCRtpMediaTypeAudio,
-        init: RTCRtpTransceiverInit(direction: TransceiverDirection.SendRecv),
-      );
-
-      await pc.addTransceiver(
-        kind: RTCRtpMediaType.RTCRtpMediaTypeVideo,
-        init: RTCRtpTransceiverInit(
-          direction: (_isVideo && !_isVideoOff) ? TransceiverDirection.SendRecv : TransceiverDirection.RecvOnly,
-        ),
-      );
-
-      await pc.addTransceiver(
-        kind: RTCRtpMediaType.RTCRtpMediaTypeVideo,
-        init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly),
-      );
-
       RtcLogger.instance.log(
-        'Created 3 transceivers (Audio: SendRecv, Cam: ${_isVideo ? "SendRecv" : "RecvOnly"}, Screen: RecvOnly) for $remoteSessionId',
-        tag: 'WEBRTC',
+        'Failed to create DataChannel for peer $remoteSessionId: $e',
+        tag: 'DATA-CHANNEL',
       );
-    } catch (e) {
-      RtcLogger.instance.log('Failed to create transceivers for $remoteSessionId: $e', tag: 'WEBRTC');
     }
 
-    // ── 3. Attach Local Tracks to Transceivers ──────────────────────────────
-    await _attachLocalMediaToPeer(peer);
+    // ── 2. Add 3 Transceivers if initiated or media ready ───────────────────
+    if (addTransceivers) {
+      await _addMediaTransceiversToPeer(peer);
+    }
 
-    // ── 4. MANDATORY LISTENERS REGISTERED BEFORE ANY setLocalDescription ─────
+    // ── 3. MANDATORY LISTENERS REGISTERED BEFORE ANY setLocalDescription ─────
     pc.onIceCandidate = (candidate) {
       RtcLogger.instance.logCandidate(candidate, isLocal: true);
       _sendLocalIceCandidate(peer, candidate);
@@ -359,7 +451,9 @@ class RtcCallService extends ChangeNotifier {
           peer.remoteStream = event.streams[0];
         } else {
           // Unified Plan manual stream creation
-          peer.remoteStream = await createLocalMediaStream('remote_${peer.remoteSessionId}_${DateTime.now().millisecondsSinceEpoch}');
+          peer.remoteStream = await createLocalMediaStream(
+            'remote_${peer.remoteSessionId}_${DateTime.now().millisecondsSinceEpoch}',
+          );
         }
       }
       peer.remoteStream!.addTrack(event.track);
@@ -369,14 +463,20 @@ class RtcCallService extends ChangeNotifier {
         peer.isCameraActive = true;
         await peer.initRenderer();
         peer.remoteRenderer.srcObject = peer.remoteStream;
-        RtcLogger.instance.log('Attached remote video stream to renderer for $remoteSessionId', tag: 'MEDIA');
+        RtcLogger.instance.log(
+          'Attached remote video stream to renderer for $remoteSessionId',
+          tag: 'MEDIA',
+        );
       } else if (event.track.kind == 'audio') {
         peer.remoteAudioTrack = event.track;
         peer.isAudioActive = true;
         try {
           await Helper.setSpeakerphoneOn(_isSpeakerOn);
         } catch (_) {}
-        RtcLogger.instance.log('Attached remote audio stream for $remoteSessionId', tag: 'MEDIA');
+        RtcLogger.instance.log(
+          'Attached remote audio stream for $remoteSessionId',
+          tag: 'MEDIA',
+        );
       }
       notifyListeners();
     };
@@ -399,7 +499,10 @@ class RtcCallService extends ChangeNotifier {
 
     pc.onIceGatheringState = (state) {
       peer.iceGatheringState = state.name;
-      RtcLogger.instance.log('GATHER [$remoteSessionId]: $state', tag: 'GATHER');
+      RtcLogger.instance.log(
+        'GATHER [$remoteSessionId]: $state',
+        tag: 'GATHER',
+      );
       if (state == RTCIceGatheringState.RTCIceGatheringStateComplete) {
         RtcLogger.instance.logGatheringComplete();
       }
@@ -407,7 +510,18 @@ class RtcCallService extends ChangeNotifier {
 
     // ── 5. Perfect Negotiation: onRenegotiationNeeded ───────────────────────
     pc.onRenegotiationNeeded = () async {
-      RtcLogger.instance.log('onRenegotiationNeeded triggered for peer $remoteSessionId', tag: 'NEGOTIATION');
+      RtcLogger.instance.log(
+        'onRenegotiationNeeded triggered for peer $remoteSessionId (state: ${pc.signalingState})',
+        tag: 'NEGOTIATION',
+      );
+      if (pc.signalingState != RTCSignalingState.RTCSignalingStateStable) {
+        peer.needsMediaRenegotiation = true;
+        return;
+      }
+      if (peer.isBuildingOffer || peer.isBuildingAnswer) {
+        peer.needsMediaRenegotiation = true;
+        return;
+      }
       await _negotiateOffer(peer);
     };
 
@@ -415,9 +529,51 @@ class RtcCallService extends ChangeNotifier {
     return peer;
   }
 
+  /// Add 3 media transceivers in Odoo 18 fixed order: [0]=Audio, [1]=Camera Video, [2]=Screen Video
+  Future<void> _addMediaTransceiversToPeer(RtcPeerSession peer) async {
+    final pc = peer.connection;
+    try {
+      await pc.addTransceiver(
+        kind: RTCRtpMediaType.RTCRtpMediaTypeAudio,
+        init: RTCRtpTransceiverInit(direction: TransceiverDirection.SendRecv),
+      );
+
+      await pc.addTransceiver(
+        kind: RTCRtpMediaType.RTCRtpMediaTypeVideo,
+        init: RTCRtpTransceiverInit(
+          direction: (_isVideo && !_isVideoOff)
+              ? TransceiverDirection.SendRecv
+              : TransceiverDirection.RecvOnly,
+        ),
+      );
+
+      await pc.addTransceiver(
+        kind: RTCRtpMediaType.RTCRtpMediaTypeVideo,
+        init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly),
+      );
+
+      RtcLogger.instance.log(
+        'Created 3 transceivers (Audio: SendRecv, Cam: ${_isVideo ? "SendRecv" : "RecvOnly"}, Screen: RecvOnly) for ${peer.remoteSessionId}',
+        tag: 'WEBRTC',
+      );
+      await _attachLocalMediaToPeer(peer);
+    } catch (e) {
+      RtcLogger.instance.log(
+        'Failed to create transceivers for ${peer.remoteSessionId}: $e',
+        tag: 'WEBRTC',
+      );
+    }
+  }
+
   /// Create and send offer for a peer
   Future<void> _negotiateOffer(RtcPeerSession peer) async {
-    if (peer.isBuildingOffer || _selfSessionId == null) return;
+    if (peer.isBuildingOffer || _selfSessionId == null) {
+      return;
+    }
+    if (peer.connection.signalingState !=
+        RTCSignalingState.RTCSignalingStateStable) {
+      return;
+    }
     peer.isBuildingOffer = true;
 
     try {
@@ -425,7 +581,11 @@ class RtcCallService extends ChangeNotifier {
       await peer.connection.setLocalDescription(offer);
       peer.isBuildingOffer = false;
 
-      RtcLogger.instance.log('Local offer set for ${peer.remoteSessionId} (seq ${peer.sequence}).', tag: 'SDP');
+      final seq = _nextSequence();
+      RtcLogger.instance.log(
+        'Local offer set for ${peer.remoteSessionId} (seq $seq).',
+        tag: 'SDP',
+      );
 
       await _signalingService.sendSignal(
         senderSessionId: _selfSessionId!,
@@ -434,12 +594,15 @@ class RtcCallService extends ChangeNotifier {
         event: 'offer',
         payload: {
           'sdp': {'type': offer.type, 'sdp': offer.sdp},
-          'sequence': peer.sequence++,
+          'sequence': seq,
         },
       );
     } catch (e) {
       peer.isBuildingOffer = false;
-      RtcLogger.instance.log('Failed to create/send offer for ${peer.remoteSessionId}: $e', tag: 'SDP-ERROR');
+      RtcLogger.instance.log(
+        'Failed to create/send offer for ${peer.remoteSessionId}: $e',
+        tag: 'SDP-ERROR',
+      );
     }
   }
 
@@ -465,7 +628,9 @@ class RtcCallService extends ChangeNotifier {
     };
 
     try {
-      _localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
+      _localStream = await navigator.mediaDevices.getUserMedia(
+        mediaConstraints,
+      );
       _isMuted = false;
       _isVideoOff = false;
 
@@ -481,7 +646,10 @@ class RtcCallService extends ChangeNotifier {
         localRenderer.srcObject = _localStream;
       }
 
-      RtcLogger.instance.log('Acquired local media stream (video: $_isVideo).', tag: 'MEDIA');
+      RtcLogger.instance.log(
+        'Acquired local media stream (video: $_isVideo).',
+        tag: 'MEDIA',
+      );
     } catch (e) {
       RtcLogger.instance.log('Error acquiring local media: $e', tag: 'MEDIA');
     }
@@ -502,9 +670,15 @@ class RtcCallService extends ChangeNotifier {
         try {
           await transceivers[0].sender.replaceTrack(audioTrack);
           await transceivers[0].setDirection(TransceiverDirection.SendRecv);
-          RtcLogger.instance.log('Attached audio track to peer ${peer.remoteSessionId}', tag: 'MEDIA');
+          RtcLogger.instance.log(
+            'Attached audio track to peer ${peer.remoteSessionId}',
+            tag: 'MEDIA',
+          );
         } catch (e) {
-          RtcLogger.instance.log('Failed to attach audio track: $e', tag: 'MEDIA');
+          RtcLogger.instance.log(
+            'Failed to attach audio track: $e',
+            tag: 'MEDIA',
+          );
         }
       }
 
@@ -516,11 +690,19 @@ class RtcCallService extends ChangeNotifier {
           try {
             await transceivers[1].sender.replaceTrack(videoTrack);
             await transceivers[1].setDirection(
-              _isVideoOff ? TransceiverDirection.RecvOnly : TransceiverDirection.SendRecv,
+              _isVideoOff
+                  ? TransceiverDirection.RecvOnly
+                  : TransceiverDirection.SendRecv,
             );
-            RtcLogger.instance.log('Attached camera track to peer ${peer.remoteSessionId}', tag: 'MEDIA');
+            RtcLogger.instance.log(
+              'Attached camera track to peer ${peer.remoteSessionId}',
+              tag: 'MEDIA',
+            );
           } catch (e) {
-            RtcLogger.instance.log('Failed to attach camera track: $e', tag: 'MEDIA');
+            RtcLogger.instance.log(
+              'Failed to attach camera track: $e',
+              tag: 'MEDIA',
+            );
           }
         }
       }
@@ -554,12 +736,15 @@ class RtcCallService extends ChangeNotifier {
     Map<String, dynamic> payload,
     int sequence,
   ) {
-    _inboundQueue = _inboundQueue.then((_) => _processPeerNotification(
-      senderSessionId,
-      event,
-      payload,
-      sequence,
-    ));
+    final selfId = _selfSessionId ?? 0;
+    if (senderSessionId <= 0 || (selfId > 0 && senderSessionId == selfId)) {
+      return;
+    }
+
+    _inboundQueue = _inboundQueue.then(
+      (_) =>
+          _processPeerNotification(senderSessionId, event, payload, sequence),
+    );
   }
 
   Future<void> _processPeerNotification(
@@ -568,7 +753,17 @@ class RtcCallService extends ChangeNotifier {
     Map<String, dynamic> payload,
     int sequence,
   ) async {
-    final peer = await _getOrCreatePeer(senderSessionId);
+    final selfId = _selfSessionId ?? 0;
+    if (senderSessionId <= 0 || (selfId > 0 && senderSessionId == selfId)) {
+      return;
+    }
+
+    // When incoming event is offer, do NOT add media transceivers initially;
+    // Odoo 18 initial offer is data-channel only, answerer adds transceivers after setRemoteDescription.
+    final peer =
+        _peers[senderSessionId] ??
+        await _getOrCreatePeer(senderSessionId, null, event != 'offer');
+    if (peer == null) return;
     peer.sequence = sequence;
 
     switch (event) {
@@ -585,57 +780,98 @@ class RtcCallService extends ChangeNotifier {
         _handleIncomingTrackChange(peer, payload);
         break;
       case 'disconnect':
-        RtcLogger.instance.log('Peer $senderSessionId disconnected.', tag: 'PEER');
+        RtcLogger.instance.log(
+          'Peer $senderSessionId disconnected.',
+          tag: 'PEER',
+        );
         await _removePeer(senderSessionId);
         break;
     }
   }
 
-  /// Handle incoming offer with Polite Peer collision resolution
-  Future<void> _handleIncomingOffer(RtcPeerSession peer, Map<String, dynamic> payload) async {
+  /// Handle incoming offer with Odoo peer_to_peer.js glare collision resolution
+  Future<void> _handleIncomingOffer(
+    RtcPeerSession peer,
+    Map<String, dynamic> payload,
+  ) async {
     final sdpData = payload['sdp'];
     if (sdpData is! Map) return;
 
     final sdpStr = sdpData['sdp'] as String? ?? '';
     final typeStr = sdpData['type'] as String? ?? 'offer';
 
-    RtcLogger.instance.log('Processing incoming offer from session ${peer.remoteSessionId}...', tag: 'SDP');
+    RtcLogger.instance.log(
+      'Processing incoming offer from session ${peer.remoteSessionId}...',
+      tag: 'SDP',
+    );
 
-    // Detect offer collision
-    final signalingState = peer.connection.signalingState;
-    final isStable = signalingState == RTCSignalingState.RTCSignalingStateStable || peer.isBuildingAnswer;
-    final hasCollision = !isStable || peer.isBuildingOffer;
+    final pc = peer.connection;
+    if (pc.signalingState ==
+        RTCSignalingState.RTCSignalingStateHaveRemoteOffer) {
+      return;
+    }
 
-    if (hasCollision && peer.hasPriority) {
-      RtcLogger.instance.log(
-        'Offer collision on ${peer.remoteSessionId} (state: $signalingState). Polite peer rolling back local offer...',
-        tag: 'COLLISION',
-      );
-      try {
-        await peer.connection.setLocalDescription(RTCSessionDescription('', 'rollback'));
-      } catch (e) {
-        RtcLogger.instance.log('Rollback note: $e', tag: 'COLLISION');
+    final selfId = _selfSessionId ?? 0;
+    final isStable = pc.signalingState == RTCSignalingState.RTCSignalingStateStable;
+    final hasLocalOffer =
+        pc.signalingState == RTCSignalingState.RTCSignalingStateHaveLocalOffer;
+    final collision = !isStable || peer.isBuildingOffer;
+
+    if (collision) {
+      // Odoo peer_to_peer.js Glare Rule:
+      // If remoteSessionId > selfId => Remote offer WINS, we rollback our local offer.
+      if (peer.remoteSessionId > selfId) {
+        RtcLogger.instance.log(
+          'Glare on peer ${peer.remoteSessionId} (state: ${pc.signalingState}). Remote has higher ID (${peer.remoteSessionId} > $selfId): rolling back local offer to accept remote offer.',
+          tag: 'COLLISION',
+        );
+        if (hasLocalOffer) {
+          try {
+            await pc.setLocalDescription(RTCSessionDescription('', 'rollback'));
+          } catch (e) {
+            RtcLogger.instance.log('Rollback error: $e', tag: 'COLLISION');
+          }
+        }
+      } else {
+        // Our ID > remoteSessionId => OUR offer WINS! Ignore their offer, DO NOT send answer.
+        RtcLogger.instance.log(
+          'Glare on peer ${peer.remoteSessionId} (state: ${pc.signalingState}). Our ID is higher ($selfId > ${peer.remoteSessionId}): ignoring remote offer (our offer wins).',
+          tag: 'COLLISION',
+        );
+        return;
       }
     }
 
     try {
       final description = RTCSessionDescription(sdpStr, typeStr);
-      await peer.connection.setRemoteDescription(description);
+      await pc.setRemoteDescription(description);
       peer.remoteDescriptionSet = true;
-      RtcLogger.instance.log('Remote description set from offer for ${peer.remoteSessionId}.', tag: 'SDP');
+      RtcLogger.instance.log(
+        'Remote description set from offer for ${peer.remoteSessionId}.',
+        tag: 'SDP',
+      );
 
       // Flush queued candidates
       await peer.flushQueuedCandidates();
 
-      // Ensure local tracks are attached before creating answer
-      await _attachLocalMediaToPeer(peer);
+      // V2 Answerer: If transceivers are empty (initial offer was data-channel only),
+      // add transceivers now on answerer.
+      final transceivers = await pc.getTransceivers();
+      if (transceivers.isEmpty) {
+        await _addMediaTransceiversToPeer(peer);
+      } else {
+        await _attachLocalMediaToPeer(peer);
+      }
 
       peer.isBuildingAnswer = true;
-      final answer = await peer.connection.createAnswer();
-      await peer.connection.setLocalDescription(answer);
+      final answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
       peer.isBuildingAnswer = false;
 
-      RtcLogger.instance.log('Local answer set for ${peer.remoteSessionId}. Sending answer...', tag: 'SDP');
+      RtcLogger.instance.log(
+        'Local answer set for ${peer.remoteSessionId}. Sending answer...',
+        tag: 'SDP',
+      );
 
       await _signalingService.sendSignal(
         senderSessionId: _selfSessionId!,
@@ -648,34 +884,64 @@ class RtcCallService extends ChangeNotifier {
       );
     } catch (e) {
       peer.isBuildingAnswer = false;
-      RtcLogger.instance.log('Error handling offer from ${peer.remoteSessionId}: $e', tag: 'SDP-ERROR');
+      RtcLogger.instance.log(
+        'Error handling offer from ${peer.remoteSessionId}: $e',
+        tag: 'SDP-ERROR',
+      );
     }
   }
 
   /// Handle incoming answer
-  Future<void> _handleIncomingAnswer(RtcPeerSession peer, Map<String, dynamic> payload) async {
+  Future<void> _handleIncomingAnswer(
+    RtcPeerSession peer,
+    Map<String, dynamic> payload,
+  ) async {
     final sdpData = payload['sdp'];
     if (sdpData is! Map) return;
 
     final sdpStr = sdpData['sdp'] as String? ?? '';
     final typeStr = sdpData['type'] as String? ?? 'answer';
 
-    RtcLogger.instance.log('Processing incoming answer from session ${peer.remoteSessionId}...', tag: 'SDP');
+    RtcLogger.instance.log(
+      'Processing incoming answer from session ${peer.remoteSessionId}...',
+      tag: 'SDP',
+    );
+
+    final pc = peer.connection;
+    final st = pc.signalingState;
+
+    // Glare Rule for Answer: ONLY accept answer when waiting in have-local-offer state!
+    if (st != RTCSignalingState.RTCSignalingStateHaveLocalOffer) {
+      RtcLogger.instance.log(
+        'Ignoring answer from ${peer.remoteSessionId} because signalingState is $st (expected have-local-offer)',
+        tag: 'SDP',
+      );
+      return;
+    }
 
     try {
       final description = RTCSessionDescription(sdpStr, typeStr);
-      await peer.connection.setRemoteDescription(description);
+      await pc.setRemoteDescription(description);
       peer.remoteDescriptionSet = true;
-      RtcLogger.instance.log('Remote description set from answer for ${peer.remoteSessionId}.', tag: 'SDP');
+      RtcLogger.instance.log(
+        'Remote description set from answer for ${peer.remoteSessionId}.',
+        tag: 'SDP',
+      );
 
       await peer.flushQueuedCandidates();
     } catch (e) {
-      RtcLogger.instance.log('Error setting remote answer for ${peer.remoteSessionId}: $e', tag: 'SDP-ERROR');
+      RtcLogger.instance.log(
+        'Error setting remote answer for ${peer.remoteSessionId}: $e',
+        tag: 'SDP-ERROR',
+      );
     }
   }
 
   /// Handle incoming candidate
-  Future<void> _handleIncomingCandidate(RtcPeerSession peer, Map<String, dynamic> payload) async {
+  Future<void> _handleIncomingCandidate(
+    RtcPeerSession peer,
+    Map<String, dynamic> payload,
+  ) async {
     final candData = payload['candidate'];
     if (candData is! Map) return;
 
@@ -694,12 +960,21 @@ class RtcCallService extends ChangeNotifier {
     try {
       await peer.connection.addCandidate(candidate);
     } catch (e) {
-      RtcLogger.instance.log('Failed to add candidate for ${peer.remoteSessionId}: $e', tag: 'ICE-ERROR');
+      RtcLogger.instance.log(
+        'Failed to add candidate for ${peer.remoteSessionId}: $e',
+        tag: 'ICE-ERROR',
+      );
     }
   }
 
-  void _handleIncomingTrackChange(RtcPeerSession peer, Map<String, dynamic> payload) {
-    RtcLogger.instance.log('trackChange from ${peer.remoteSessionId}: $payload', tag: 'MEDIA');
+  void _handleIncomingTrackChange(
+    RtcPeerSession peer,
+    Map<String, dynamic> payload,
+  ) {
+    RtcLogger.instance.log(
+      'trackChange from ${peer.remoteSessionId}: $payload',
+      tag: 'MEDIA',
+    );
     final streamType = payload['type'] as String?;
     final active = payload['active'] == true;
 
@@ -725,7 +1000,9 @@ class RtcCallService extends ChangeNotifier {
       } catch (_) {}
 
       // Unmute remote audio track
-      peer.remoteStream?.getAudioTracks().forEach((track) => track.enabled = true);
+      peer.remoteStream?.getAudioTracks().forEach(
+        (track) => track.enabled = true,
+      );
 
       _sendDataChannelInfo(peer);
 
@@ -735,7 +1012,10 @@ class RtcCallService extends ChangeNotifier {
       );
       notifyListeners();
     } else if (state == RTCIceConnectionState.RTCIceConnectionStateFailed) {
-      RtcLogger.instance.log('ICE failed on peer ${peer.remoteSessionId}. Triggering ICE restart...', tag: 'ICE');
+      RtcLogger.instance.log(
+        'ICE failed on peer ${peer.remoteSessionId}. Triggering ICE restart...',
+        tag: 'ICE',
+      );
       _restartIce(peer);
     }
   }
@@ -771,12 +1051,23 @@ class RtcCallService extends ChangeNotifier {
     _sendDataChannelMessage(peer, 'info', info);
   }
 
-  void _sendDataChannelMessage(RtcPeerSession peer, String event, dynamic payload) {
-    if (peer.dataChannel != null && peer.dataChannel!.state == RTCDataChannelState.RTCDataChannelOpen) {
+  void _sendDataChannelMessage(
+    RtcPeerSession peer,
+    String event,
+    dynamic payload,
+  ) {
+    if (peer.dataChannel != null &&
+        peer.dataChannel!.state == RTCDataChannelState.RTCDataChannelOpen) {
       try {
-        peer.dataChannel!.send(RTCDataChannelMessage(
-          jsonEncode({'event': event, 'channelId': _channelId, 'payload': payload}),
-        ));
+        peer.dataChannel!.send(
+          RTCDataChannelMessage(
+            jsonEncode({
+              'event': event,
+              'channelId': _channelId,
+              'payload': payload,
+            }),
+          ),
+        );
       } catch (_) {}
     }
   }
@@ -797,23 +1088,60 @@ class RtcCallService extends ChangeNotifier {
   void _handleRtcSessionsUpdate(int channelId, dynamic rtcSessions) {
     if (channelId != _channelId) return;
 
+    final selfId = _selfSessionId ?? 0;
+    final newPeerIds = <int>[];
     if (rtcSessions is List) {
       for (final s in rtcSessions) {
-        if (s is Map && s['id'] != null && s['id'] != _selfSessionId) {
-          final id = s['id'] as int;
-          if (!_peers.containsKey(id)) {
-            RtcLogger.instance.log('Discovered new peer $id in sessions update. Connecting...', tag: 'MESH');
-            _getOrCreatePeer(id);
+        if (s is Map && s['id'] != null) {
+          final id = int.tryParse(s['id'].toString());
+          if (id != null && id > 0 && id != selfId) newPeerIds.add(id);
+        } else if (s is List &&
+            s.length == 2 &&
+            s[0] == 'ADD' &&
+            s[1] is List) {
+          for (final item in s[1]) {
+            int? id;
+            if (item is int) {
+              id = item;
+            } else if (item is Map && item['id'] != null) {
+              id = int.tryParse(item['id'].toString());
+            } else if (item != null) {
+              id = int.tryParse(item.toString());
+            }
+            if (id != null && id > 0 && id != selfId) {
+              newPeerIds.add(id);
+            }
           }
         }
+      }
+    }
+
+    for (final id in newPeerIds) {
+      if (!_peers.containsKey(id)) {
+        RtcLogger.instance.log(
+          'Discovered new peer $id in sessions update. Connecting...',
+          tag: 'MESH',
+        );
+        _getOrCreatePeer(id);
       }
     }
   }
 
   void _handleSessionEnded(int sessionId) {
+    if (_selfSessionId != null && sessionId == _selfSessionId) {
+      RtcLogger.instance.log(
+        'Server ended our RTC session ($sessionId). Hanging up...',
+        tag: 'CALL',
+      );
+      hangUp(remoteInitiated: true);
+      return;
+    }
     _removePeer(sessionId);
     if (_peers.isEmpty && _status == CallStatus.connected) {
-      RtcLogger.instance.log('All remote participants left the call.', tag: 'CALL');
+      RtcLogger.instance.log(
+        'All remote participants left the call.',
+        tag: 'CALL',
+      );
       hangUp(remoteInitiated: true);
     }
   }
@@ -844,7 +1172,10 @@ class RtcCallService extends ChangeNotifier {
       );
     }
 
-    RtcLogger.instance.log('Microphone toggled: isMuted=$_isMuted', tag: 'MEDIA');
+    RtcLogger.instance.log(
+      'Microphone toggled: isMuted=$_isMuted',
+      tag: 'MEDIA',
+    );
     notifyListeners();
   }
 
@@ -864,7 +1195,11 @@ class RtcCallService extends ChangeNotifier {
         final videoStream = await navigator.mediaDevices.getUserMedia({
           'audio': false,
           'video': {
-            'mandatory': {'minWidth': '640', 'minHeight': '480', 'minFrameRate': '30'},
+            'mandatory': {
+              'minWidth': '640',
+              'minHeight': '480',
+              'minFrameRate': '30',
+            },
             'facingMode': 'user',
           },
         });
@@ -902,7 +1237,9 @@ class RtcCallService extends ChangeNotifier {
         final transceivers = await peer.connection.getTransceivers();
         if (transceivers.length >= 2) {
           await transceivers[1].setDirection(
-            _isVideoOff ? TransceiverDirection.RecvOnly : TransceiverDirection.SendRecv,
+            _isVideoOff
+                ? TransceiverDirection.RecvOnly
+                : TransceiverDirection.SendRecv,
           );
         }
         _sendDataChannelInfo(peer);
@@ -923,7 +1260,10 @@ class RtcCallService extends ChangeNotifier {
       );
     }
 
-    RtcLogger.instance.log('Camera video toggled: isVideo=$_isVideo, isVideoOff=$_isVideoOff', tag: 'MEDIA');
+    RtcLogger.instance.log(
+      'Camera video toggled: isVideo=$_isVideo, isVideoOff=$_isVideoOff',
+      tag: 'MEDIA',
+    );
     notifyListeners();
   }
 
@@ -947,7 +1287,10 @@ class RtcCallService extends ChangeNotifier {
     _isSpeakerOn = !_isSpeakerOn;
     try {
       await Helper.setSpeakerphoneOn(_isSpeakerOn);
-      RtcLogger.instance.log('Speakerphone toggled: isSpeakerOn=$_isSpeakerOn', tag: 'MEDIA');
+      RtcLogger.instance.log(
+        'Speakerphone toggled: isSpeakerOn=$_isSpeakerOn',
+        tag: 'MEDIA',
+      );
     } catch (e) {
       RtcLogger.instance.log('Failed to toggle speakerphone: $e', tag: 'MEDIA');
     }
@@ -1024,7 +1367,10 @@ class RtcCallService extends ChangeNotifier {
         }
         RtcLogger.instance.log('Screen sharing started.', tag: 'SCREEN');
       } catch (e) {
-        RtcLogger.instance.log('Failed to start screen sharing: $e', tag: 'SCREEN');
+        RtcLogger.instance.log(
+          'Failed to start screen sharing: $e',
+          tag: 'SCREEN',
+        );
       }
     }
     notifyListeners();
@@ -1053,18 +1399,21 @@ class RtcCallService extends ChangeNotifier {
 
   void _startDiagnosisTimer() {
     _cancelDiagnosisTimer();
-    _diagnosisTimer = Timer(const Duration(seconds: CallConfig.iceTimeoutSeconds), () {
-      if (_status != CallStatus.connected && _status != CallStatus.ended) {
-        RtcLogger.instance.log(
-          'ICE Connection timed out after ${CallConfig.iceTimeoutSeconds}s without reaching connected state.',
-          tag: 'DIAGNOSIS',
-        );
-        RtcLogger.instance.evaluateDiagnosis(
-          isConnected: false,
-          iceState: iceConnectionState,
-        );
-      }
-    });
+    _diagnosisTimer = Timer(
+      const Duration(seconds: CallConfig.iceTimeoutSeconds),
+      () {
+        if (_status != CallStatus.connected && _status != CallStatus.ended) {
+          RtcLogger.instance.log(
+            'ICE Connection timed out after ${CallConfig.iceTimeoutSeconds}s without reaching connected state.',
+            tag: 'DIAGNOSIS',
+          );
+          RtcLogger.instance.evaluateDiagnosis(
+            isConnected: false,
+            iceState: iceConnectionState,
+          );
+        }
+      },
+    );
   }
 
   void _cancelDiagnosisTimer() {
@@ -1077,22 +1426,30 @@ class RtcCallService extends ChangeNotifier {
     _statsTimer?.cancel();
     _statsTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
       for (final peer in _peers.values) {
+        if (_selfSessionId != null && peer.remoteSessionId == _selfSessionId) {
+          continue;
+        }
         try {
           final stats = await peer.connection.getStats();
           for (final report in stats) {
             final values = report.values;
             if (report.type == 'outbound-rtp') {
               final kind = values['kind'] ?? values['mediaType'];
-              final bytes = int.tryParse(values['bytesSent']?.toString() ?? '0') ?? 0;
+              final bytes =
+                  int.tryParse(values['bytesSent']?.toString() ?? '0') ?? 0;
               if (kind == 'audio') peer.bytesSentAudio = bytes;
               if (kind == 'video') peer.bytesSentVideo = bytes;
             } else if (report.type == 'inbound-rtp') {
               final kind = values['kind'] ?? values['mediaType'];
-              final bytes = int.tryParse(values['bytesReceived']?.toString() ?? '0') ?? 0;
+              final bytes =
+                  int.tryParse(values['bytesReceived']?.toString() ?? '0') ?? 0;
               if (kind == 'audio') peer.bytesReceivedAudio = bytes;
               if (kind == 'video') peer.bytesReceivedVideo = bytes;
-            } else if (report.type == 'candidate-pair' && (values['state'] == 'succeeded' || values['selected'] == true)) {
-              peer.selectedCandidatePair = 'pair=${values['localCandidateId']}->${values['remoteCandidateId']}';
+            } else if (report.type == 'candidate-pair' &&
+                (values['state'] == 'succeeded' ||
+                    values['selected'] == true)) {
+              peer.selectedCandidatePair =
+                  'pair=${values['localCandidateId']}->${values['remoteCandidateId']}';
             }
           }
 
@@ -1103,8 +1460,13 @@ class RtcCallService extends ChangeNotifier {
 
           // Evaluate live media flow
           if (_status == CallStatus.connected) {
-            if (peer.bytesReceivedAudio == 0 && peer.bytesSentAudio == 0 && _callDuration > 5) {
-              RtcLogger.instance.log('WARNING: Media not flowing after 5s connected!', tag: 'DIAGNOSIS');
+            if (peer.bytesReceivedAudio == 0 &&
+                peer.bytesSentAudio == 0 &&
+                _callDuration > 5) {
+              RtcLogger.instance.log(
+                'WARNING: Media not flowing after 5s connected!',
+                tag: 'DIAGNOSIS',
+              );
             }
           }
         } catch (_) {}
@@ -1119,8 +1481,14 @@ class RtcCallService extends ChangeNotifier {
   }
 
   /// Hang up and clean up all call resources
-  Future<void> hangUp({bool remoteInitiated = false, bool notifyRemote = true}) async {
-    RtcLogger.instance.log('HangUp initiated (remoteInitiated: $remoteInitiated)...', tag: 'CALL');
+  Future<void> hangUp({
+    bool remoteInitiated = false,
+    bool notifyRemote = true,
+  }) async {
+    RtcLogger.instance.log(
+      'HangUp initiated (remoteInitiated: $remoteInitiated)...',
+      tag: 'CALL',
+    );
 
     _cancelDiagnosisTimer();
     _durationTimer?.cancel();
@@ -1131,7 +1499,10 @@ class RtcCallService extends ChangeNotifier {
     _statsTimer = null;
 
     // Send disconnect notification to peers if we initiated
-    if (!remoteInitiated && notifyRemote && _selfSessionId != null && _peers.isNotEmpty) {
+    if (!remoteInitiated &&
+        notifyRemote &&
+        _selfSessionId != null &&
+        _peers.isNotEmpty) {
       await _signalingService.sendSignal(
         senderSessionId: _selfSessionId!,
         targetSessionIds: _peers.keys.toList(),
@@ -1141,14 +1512,21 @@ class RtcCallService extends ChangeNotifier {
       );
     }
 
-    // Dispose all peer connections
-    for (final peer in _peers.values) {
-      await peer.dispose();
-    }
+    // Dispose all peer connections safely without concurrent modification
+    final peersToDispose = _peers.values.toList();
     _peers.clear();
+    for (final peer in peersToDispose) {
+      try {
+        await peer.dispose();
+      } catch (_) {}
+    }
 
     // Detach local renderers and tracks
-    localRenderer.srcObject = null;
+    if (_localRendererInitialized) {
+      try {
+        localRenderer.srcObject = null;
+      } catch (_) {}
+    }
     if (_localStream != null) {
       for (final t in _localStream!.getTracks()) {
         try {
@@ -1185,7 +1563,10 @@ class RtcCallService extends ChangeNotifier {
     _isScreenSharing = false;
     _isJoining = false;
 
-    RtcLogger.instance.log('Call terminated and all resources disposed.', tag: 'CALL');
+    RtcLogger.instance.log(
+      'Call terminated and all resources disposed.',
+      tag: 'CALL',
+    );
     notifyListeners();
   }
 

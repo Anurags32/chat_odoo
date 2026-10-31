@@ -62,16 +62,23 @@ class _ApiUsersScreenState extends ConsumerState<ApiUsersScreen>
     super.dispose();
   }
 
-  void _initiateCall(int partnerId, CallType type) async {
+  void _initiateCall(ApiUserModel user, CallType type) async {
     final success = await ref.read(callManagerProvider.notifier).startCall(
-      calleePartnerId: partnerId,
+      channelId: user.channelId,
+      calleePartnerId: user.partnerId,
+      calleeName: user.name,
       callType: type,
     );
     if (success && mounted) {
+      final extra = {
+        'callee_name': user.name,
+        'partner_id': user.partnerId,
+        'channel_id': user.channelId,
+      };
       if (type == CallType.video) {
-        context.push('/video-call');
+        context.push('/video-call', extra: extra);
       } else {
-        context.push('/audio-call');
+        context.push('/audio-call', extra: extra);
       }
     }
   }
@@ -618,13 +625,13 @@ class _ApiUsersScreenState extends ConsumerState<ApiUsersScreen>
                       icon: const Icon(Icons.call_outlined, color: AppColors.purple1, size: 21),
                       tooltip: 'Audio Call',
                       visualDensity: VisualDensity.compact,
-                      onPressed: () => _initiateCall(user.partnerId, CallType.audio),
+                      onPressed: () => _initiateCall(user, CallType.audio),
                     ),
                     IconButton(
                       icon: const Icon(Icons.videocam_outlined, color: AppColors.purple1, size: 23),
                       tooltip: 'Video Call',
                       visualDensity: VisualDensity.compact,
-                      onPressed: () => _initiateCall(user.partnerId, CallType.video),
+                      onPressed: () => _initiateCall(user, CallType.video),
                     ),
                     Container(
                       padding: const EdgeInsets.all(7),

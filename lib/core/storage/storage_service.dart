@@ -113,6 +113,10 @@ class StorageService {
     return _preferences?.getString(_sessionCookieKey);
   }
 
+  String? getSessionCookieSync() {
+    return _preferences?.getString(_sessionCookieKey);
+  }
+
   // ── FCM Token ────────────────────────────────────────────────────────────
   Future<bool> saveFcmToken(String token) async {
     return await _preferences?.setString(_fcmTokenKey, token) ?? false;

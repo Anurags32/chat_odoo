@@ -3,6 +3,7 @@ class ApiUserModel {
   final String name;
   final String? email; // can be false (bool) from Odoo when not set
   final int partnerId;
+  final int? channelId;
   final String? avatar; // Base64 encoded image string
   final String imStatus;
   final DateTime? lastMessageDate;
@@ -12,6 +13,7 @@ class ApiUserModel {
     required this.name,
     this.email,
     required this.partnerId,
+    this.channelId,
     this.avatar,
     required this.imStatus,
     this.lastMessageDate,
@@ -28,11 +30,17 @@ class ApiUserModel {
     final DateTime? lastMessageDate =
         (rawDate != null && rawDate is String) ? DateTime.tryParse(rawDate) : null;
 
+    final rawChannelId = json['channel_id'];
+    final int? channelId = rawChannelId is int
+        ? rawChannelId
+        : (rawChannelId != null ? int.tryParse(rawChannelId.toString()) : null);
+
     return ApiUserModel(
       id: json['id'] as int,
       name: json['name'] as String,
       email: email,
       partnerId: json['partner_id'] as int,
+      channelId: channelId,
       avatar: json['avatar'] as String?,
       imStatus: json['im_status'] as String,
       lastMessageDate: lastMessageDate,
@@ -45,6 +53,7 @@ class ApiUserModel {
       'name': name,
       'email': email,
       'partner_id': partnerId,
+      if (channelId != null) 'channel_id': channelId,
       'avatar': avatar,
       'im_status': imStatus,
       'last_message_date': lastMessageDate?.toIso8601String(),

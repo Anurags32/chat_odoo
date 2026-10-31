@@ -119,17 +119,19 @@ class _RtcDebugLogScreenState extends ConsumerState<RtcDebugLogScreen> {
               children: [
                 // Candidate Summary row
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'CANDIDATES: host=${logger.localHostCount} | srflx=${logger.localSrflxCount} | relay=${logger.localRelayCount}',
-                      style: const TextStyle(
-                        fontFamily: 'monospace',
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
+                    Expanded(
+                      child: Text(
+                        'CANDIDATES: host=${logger.localHostCount} | srflx=${logger.localSrflxCount} | relay=${logger.localRelayCount}',
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
+                    const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
@@ -139,7 +141,7 @@ class _RtcDebugLogScreenState extends ConsumerState<RtcDebugLogScreen> {
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                        'ICE: ${rtcService.iceConnectionState.toUpperCase()}',
+                        'ICE: ${rtcService.iceConnectionState.replaceAll('RTCIceConnectionState', '').replaceAll('State', '').toUpperCase()}',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 11,

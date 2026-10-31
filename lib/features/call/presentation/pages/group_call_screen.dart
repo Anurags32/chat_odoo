@@ -52,6 +52,12 @@ class _GroupCallScreenState extends ConsumerState<GroupCallScreen> {
   void initState() {
     super.initState();
     _isVideoOff = widget.callType == CallType.audio;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final webrtc = ref.read(webrtcServiceProvider);
+      await webrtc.initRenderers();
+      await webrtc.startLocalStream(widget.callType);
+      if (mounted) setState(() {});
+    });
     _startTimer();
   }
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/call_model.dart';
 import '../services/odoo_api.dart';
@@ -6,9 +7,14 @@ import '../services/rtc_call_service.dart';
 import '../services/rtc_logger.dart';
 import '../services/call_signaling_service.dart';
 import '../services/webrtc_service.dart';
+import '../services/odoo_rtc_service.dart';
+import '../services/callkit_service.dart';
+import '../../../../core/network/api_constants.dart';
+import '../../../../core/network/odoo_bus_service.dart';
 import '../../../chat/data/providers/chat_api_provider.dart';
 import '../../../chat/data/services/chat_api_service.dart';
 import '../../../../core/storage/storage_service.dart';
+import '../../../../config.dart';
 
 /// Odoo API Service Provider
 final odooApiProvider = Provider<OdooApi>((ref) {
@@ -25,10 +31,7 @@ final signalingServiceProvider = Provider<SignalingService>((ref) {
 final rtcCallServiceProvider = ChangeNotifierProvider<RtcCallService>((ref) {
   final api = ref.watch(odooApiProvider);
   final signaling = ref.watch(signalingServiceProvider);
-  final service = RtcCallService(
-    odooApi: api,
-    signalingService: signaling,
-  );
+  final service = RtcCallService(odooApi: api, signalingService: signaling);
   ref.onDispose(() {
     service.dispose();
   });
@@ -48,6 +51,35 @@ final callSignalingServiceProvider = Provider<CallSignalingService>((ref) {
 final webrtcServiceProvider = Provider<WebRtcService>((ref) {
   final service = WebRtcService();
   ref.onDispose(() {
+    service.dispose();
+  });
+  return service;
+});
+
+/// Odoo 18 Direct RTC Service Provider (v2)
+final odooRtcServiceProvider = Provider<OdooRtcService>((ref) {
+  final cookie = StorageService.instance.getSessionCookieSync() ?? '';
+  final service = OdooRtcService(
+    baseUrl: ApiConstants.serverUrl,
+    sessionId: cookie,
+  );
+
+  // Hook into shared OdooBusService
+  final peerSub = OdooBusService.instance.peerNotifications.listen((n) {
+    service.handlePeerNotification(
+      sender: n.senderSessionId,
+      event: n.event,
+      channelId: n.channelId,
+      payload: n.payload,
+    );
+  });
+  final endSub = OdooBusService.instance.sessionEnded.listen(
+    service.handleSessionEnded,
+  );
+
+  ref.onDispose(() {
+    peerSub.cancel();
+    endSub.cancel();
     service.dispose();
   });
   return service;
@@ -104,9 +136,95 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
   final RtcCallService _rtcService;
   final WebRtcService _webrtc;
   final ChatApiService _chatApi;
+  StreamSubscription? _rtcSessionsSub;
+  StreamSubscription? _sessionEndedSub;
 
-  CallManagerNotifier(this._rtcService, this._webrtc, this._chatApi) : super(CallStateData()) {
+  CallManagerNotifier(this._rtcService, this._webrtc, this._chatApi)
+    : super(CallStateData()) {
     _rtcService.addListener(_syncState);
+    _initBusListeners();
+  }
+
+  void _initBusListeners() {
+    _rtcSessionsSub?.cancel();
+    _rtcSessionsSub = OdooBusService.instance.rtcSessionsUpdate.listen(
+      _handleRtcSessionsUpdate,
+    );
+
+    _sessionEndedSub?.cancel();
+    _sessionEndedSub = OdooBusService.instance.sessionEnded.listen((sessionId) {
+      if (!mounted) return;
+      if (state.status == CallState.ringing && state.isIncoming) {
+        RtcLogger.instance.log(
+          'Caller cancelled the incoming call (session $sessionId ended)',
+          tag: 'CALL-NOTIF',
+        );
+        endCall();
+        if (state.activeCall?.id != null) {
+          CallKitService.endCallStatic(state.activeCall!.id);
+        }
+      }
+    });
+  }
+
+  void _handleRtcSessionsUpdate(Map<String, dynamic> data) {
+    if (!mounted) return;
+    final chId = data['id'] as int?;
+    if (chId == null || chId <= 0) return;
+
+    // If we are already engaged in a call, ignore other channel session updates
+    if (state.status != CallState.idle) {
+      return;
+    }
+
+    final rtcSessions = data['rtcSessions'];
+    int? remoteSessionId;
+    String callerName = data['name'] as String? ?? 'Odoo User';
+
+    if (rtcSessions is List) {
+      for (final s in rtcSessions) {
+        if (s is Map && s['id'] != null) {
+          final id = s['id'] as int;
+          if (id != _rtcService.selfSessionId) {
+            remoteSessionId = id;
+            if (s['name'] != null) callerName = s['name'].toString();
+            break;
+          }
+        } else if (s is List &&
+            s.length == 2 &&
+            s[0] == 'ADD' &&
+            s[1] is List) {
+          for (final item in s[1]) {
+            if (item is int && item != _rtcService.selfSessionId) {
+              remoteSessionId = item;
+              break;
+            } else if (item is Map && item['id'] != null) {
+              final id = item['id'] as int;
+              if (id != _rtcService.selfSessionId) {
+                remoteSessionId = id;
+                if (item['name'] != null) callerName = item['name'].toString();
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (remoteSessionId != null) {
+      RtcLogger.instance.log(
+        'Incoming Odoo 18 call detected on channel $chId from remote session $remoteSessionId ($callerName)',
+        tag: 'CALL-NOTIF',
+      );
+      showIncomingCall(channelId: chId, callerName: callerName);
+      try {
+        CallKitService.showIncomingCallStatic(
+          callId: chId,
+          callerName: callerName,
+          callType: CallType.audio,
+        );
+      } catch (_) {}
+    }
   }
 
   void _syncState() {
@@ -153,7 +271,10 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
     int targetChannelId = channelId ?? 0;
     if (targetChannelId <= 0) {
       try {
-        final res = await _chatApi.createChannel(partnerId: calleePartnerId);
+        final res = await _chatApi.createChannel(
+          partnerId: calleePartnerId,
+          channelId: targetChannelId > 0 ? targetChannelId : null,
+        );
         if (res.success && res.data != null) {
           targetChannelId = res.data!.channel.id;
         }
@@ -165,8 +286,11 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
       }
     }
     if (targetChannelId <= 0) {
-      targetChannelId = calleePartnerId;
+      targetChannelId = CallConfig.defaultChannelId;
     }
+
+    OdooBusService.instance.addChannel('discuss.channel_$targetChannelId');
+    OdooBusService.instance.addChannel('channel_$targetChannelId');
 
     final isVideo = callType == CallType.video;
     final success = await _rtcService.joinCall(
@@ -249,12 +373,15 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
 
   void handleBusEvent(String eventName, Map<String, dynamic> payload) {
     if (eventName == 'incoming' || eventName == 'call') {
-      final callId = int.tryParse(payload['call_id']?.toString() ?? '') ??
+      final callId =
+          int.tryParse(payload['call_id']?.toString() ?? '') ??
           int.tryParse(payload['channel_id']?.toString() ?? '') ??
-          1;
+          CallConfig.defaultChannelId;
       final callerName = payload['caller_name'] as String? ?? 'Incoming Call';
       showIncomingCall(channelId: callId, callerName: callerName);
-    } else if (eventName == 'reject' || eventName == 'cancel' || eventName == 'end') {
+    } else if (eventName == 'reject' ||
+        eventName == 'cancel' ||
+        eventName == 'end') {
       endCall();
     }
   }
@@ -276,9 +403,7 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
 
   Future<void> rejectCall({String reason = 'rejected'}) async {
     if (state.activeCall != null) {
-      final record = state.activeCall!.copyWith(
-        state: CallState.rejected,
-      );
+      final record = state.activeCall!.copyWith(state: CallState.rejected);
       StorageService.instance.saveCallRecord(record.toJson());
     }
     await _rtcService.hangUp();
@@ -288,9 +413,7 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
 
   Future<void> cancelCall([int? callId]) async {
     if (state.activeCall != null) {
-      final record = state.activeCall!.copyWith(
-        state: CallState.cancelled,
-      );
+      final record = state.activeCall!.copyWith(state: CallState.cancelled);
       StorageService.instance.saveCallRecord(record.toJson());
     }
     await _rtcService.hangUp();
@@ -339,14 +462,17 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
 
   @override
   void dispose() {
+    _rtcSessionsSub?.cancel();
+    _sessionEndedSub?.cancel();
     _rtcService.removeListener(_syncState);
     super.dispose();
   }
 }
 
-final callManagerProvider = StateNotifierProvider<CallManagerNotifier, CallStateData>((ref) {
-  final rtcService = ref.read(rtcCallServiceProvider);
-  final webrtc = ref.read(webrtcServiceProvider);
-  final chatApi = ref.read(chatApiServiceProvider);
-  return CallManagerNotifier(rtcService, webrtc, chatApi);
-});
+final callManagerProvider =
+    StateNotifierProvider<CallManagerNotifier, CallStateData>((ref) {
+      final rtcService = ref.read(rtcCallServiceProvider);
+      final webrtc = ref.read(webrtcServiceProvider);
+      final chatApi = ref.read(chatApiServiceProvider);
+      return CallManagerNotifier(rtcService, webrtc, chatApi);
+    });

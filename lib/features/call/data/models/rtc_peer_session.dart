@@ -7,7 +7,8 @@ class RtcPeerSession {
   final int remoteSessionId;
   final int selfSessionId;
   final RTCPeerConnection connection;
-  final bool hasPriority; // remoteSessionId > selfSessionId (Polite Peer negotiation)
+  final bool
+  hasPriority; // remoteSessionId > selfSessionId (Polite Peer negotiation)
 
   RTCDataChannel? dataChannel;
   final RTCVideoRenderer remoteRenderer = RTCVideoRenderer();
@@ -35,6 +36,7 @@ class RtcPeerSession {
   bool isBuildingOffer = false;
   bool isBuildingAnswer = false;
   bool remoteDescriptionSet = false;
+  bool needsMediaRenegotiation = false;
   final List<RTCIceCandidate> queuedCandidates = [];
 
   // Stats tracking
@@ -56,9 +58,15 @@ class RtcPeerSession {
     try {
       await remoteRenderer.initialize();
       rendererInitialized = true;
-      RtcLogger.instance.log('Remote renderer initialized for peer $remoteSessionId', tag: 'PEER');
+      RtcLogger.instance.log(
+        'Remote renderer initialized for peer $remoteSessionId',
+        tag: 'PEER',
+      );
     } catch (e) {
-      RtcLogger.instance.log('Failed to init renderer for peer $remoteSessionId: $e', tag: 'PEER');
+      RtcLogger.instance.log(
+        'Failed to init renderer for peer $remoteSessionId: $e',
+        tag: 'PEER',
+      );
     }
   }
 
@@ -80,7 +88,10 @@ class RtcPeerSession {
       try {
         await connection.addCandidate(candidate);
       } catch (e) {
-        RtcLogger.instance.log('Error adding queued candidate: $e', tag: 'ICE-ERROR');
+        RtcLogger.instance.log(
+          'Error adding queued candidate: $e',
+          tag: 'ICE-ERROR',
+        );
       }
     }
     queuedCandidates.clear();
@@ -107,9 +118,9 @@ class RtcPeerSession {
     } catch (_) {}
     dataChannel = null;
 
-    remoteRenderer.srcObject = null;
     if (rendererInitialized) {
       try {
+        remoteRenderer.srcObject = null;
         await remoteRenderer.dispose();
       } catch (_) {}
       rendererInitialized = false;
@@ -133,6 +144,9 @@ class RtcPeerSession {
     } catch (_) {}
 
     queuedCandidates.clear();
-    RtcLogger.instance.log('Disposed peer session $remoteSessionId cleanly.', tag: 'PEER');
+    RtcLogger.instance.log(
+      'Disposed peer session $remoteSessionId cleanly.',
+      tag: 'PEER',
+    );
   }
 }

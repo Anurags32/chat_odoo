@@ -10,13 +10,19 @@ class ChatApiService {
   // Create or Get Channel
   Future<ApiResponse<ChannelResponse>> createChannel({
     required int partnerId,
+    int? channelId,
   }) async {
     try {
+      final payload = <String, dynamic>{
+        'partner_id': partnerId,
+        // Backend Odoo controller requires 'channel_id' key to be present;
+        // if omitted, it defaults to '' and does ('id', 'in', ''.split(',')) -> [''] which breaks PostgreSQL.
+        'channel_id': (channelId != null && channelId > 0) ? channelId : null,
+      };
+
       final response = await _dioClient.post(
         ApiConstants.createChannel,
-        data: {
-          'partner_id': partnerId,
-        },
+        data: payload,
       );
 
       if (response.statusCode == 200) {
@@ -34,12 +40,16 @@ class ChatApiService {
         );
       }
     } on DioException catch (e) {
+      final msg = e.response?.data is Map
+          ? (e.response?.data['error']?.toString() ??
+                e.response?.data['message']?.toString())
+          : null;
       return ApiResponse.error(
-        e.response?.data['message'] ?? 'Network error occurred',
+        msg ?? 'Network error occurred',
         statusCode: e.response?.statusCode,
       );
     } catch (e) {
-      return ApiResponse.error('An unexpected error occurred');
+      return ApiResponse.error('An unexpected error occurred: $e');
     }
   }
 
@@ -50,10 +60,7 @@ class ChatApiService {
     List<MessageAttachment>? attachments,
   }) async {
     try {
-      final data = {
-        'channel_id': channelId,
-        'body': body,
-      };
+      final data = {'channel_id': channelId, 'body': body};
 
       // Add attachments if provided
       if (attachments != null && attachments.isNotEmpty) {

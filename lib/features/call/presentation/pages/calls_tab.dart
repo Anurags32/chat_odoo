@@ -10,8 +10,9 @@ import '../../../auth/domain/models/api_user_model.dart';
 import '../../data/models/call_model.dart';
 import '../../data/providers/call_provider.dart';
 
-final callLogsFutureProvider =
-    FutureProvider.autoDispose<List<CallModel>>((ref) async {
+final callLogsFutureProvider = FutureProvider.autoDispose<List<CallModel>>((
+  ref,
+) async {
   final signaling = ref.watch(callSignalingServiceProvider);
   return signaling.fetchHistory(limit: 50);
 });
@@ -26,16 +27,29 @@ class CallsTab extends ConsumerStatefulWidget {
 class _CallsTabState extends ConsumerState<CallsTab> {
   int _filterIndex = 0; // 0: All, 1: Missed
 
-  void _initiateCall(int partnerId, String name, CallType type) {
-    ref.read(callManagerProvider.notifier).startCall(
+  void _initiateCall(
+    int partnerId,
+    String name,
+    CallType type, {
+    int? channelId,
+  }) {
+    ref
+        .read(callManagerProvider.notifier)
+        .startCall(
+          channelId: channelId,
           calleePartnerId: partnerId,
           calleeName: name,
           callType: type,
         );
+    final extra = {
+      'callee_name': name,
+      'partner_id': partnerId,
+      'channel_id': channelId,
+    };
     if (type == CallType.video) {
-      context.push('/video-call', extra: {'callee_name': name, 'partner_id': partnerId});
+      context.push('/video-call', extra: extra);
     } else {
-      context.push('/audio-call', extra: {'callee_name': name, 'partner_id': partnerId});
+      context.push('/audio-call', extra: extra);
     }
   }
 
@@ -63,7 +77,9 @@ class _CallsTabState extends ConsumerState<CallsTab> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                    color: isDark
+                        ? AppColors.darkBorder
+                        : AppColors.lightBorder,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -95,7 +111,9 @@ class _CallsTabState extends ConsumerState<CallsTab> {
                       final u = users[index];
                       return ListTile(
                         leading: CircleAvatar(
-                          backgroundColor: AppColors.primary.withValues(alpha: 0.15),
+                          backgroundColor: AppColors.primary.withValues(
+                            alpha: 0.15,
+                          ),
                           child: Text(
                             u.name.isNotEmpty ? u.name[0].toUpperCase() : '?',
                             style: const TextStyle(
@@ -119,8 +137,8 @@ class _CallsTabState extends ConsumerState<CallsTab> {
                             color: u.isOnline
                                 ? AppColors.online
                                 : (isDark
-                                    ? AppColors.darkTextSecondary
-                                    : AppColors.lightTextSecondary),
+                                      ? AppColors.darkTextSecondary
+                                      : AppColors.lightTextSecondary),
                           ),
                         ),
                         trailing: Row(
@@ -131,15 +149,28 @@ class _CallsTabState extends ConsumerState<CallsTab> {
                               color: AppColors.primary,
                               onPressed: () {
                                 Navigator.pop(ctx);
-                                _initiateCall(u.partnerId, u.name, CallType.audio);
+                                _initiateCall(
+                                  u.partnerId,
+                                  u.name,
+                                  CallType.audio,
+                                  channelId: u.channelId,
+                                );
                               },
                             ),
                             IconButton(
-                              icon: const Icon(Icons.videocam_outlined, size: 22),
+                              icon: const Icon(
+                                Icons.videocam_outlined,
+                                size: 22,
+                              ),
                               color: AppColors.accentTeal,
                               onPressed: () {
                                 Navigator.pop(ctx);
-                                _initiateCall(u.partnerId, u.name, CallType.video);
+                                _initiateCall(
+                                  u.partnerId,
+                                  u.name,
+                                  CallType.video,
+                                  channelId: u.channelId,
+                                );
                               },
                             ),
                           ],
@@ -213,7 +244,11 @@ class _CallsTabState extends ConsumerState<CallsTab> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.error_outline, size: 48, color: AppColors.error),
+                    const Icon(
+                      Icons.error_outline,
+                      size: 48,
+                      color: AppColors.error,
+                    ),
                     const SizedBox(height: 12),
                     Text(
                       'Failed to load call history',
@@ -235,10 +270,12 @@ class _CallsTabState extends ConsumerState<CallsTab> {
               data: (calls) {
                 final filtered = _filterIndex == 1
                     ? calls
-                        .where((c) =>
-                            c.state == CallState.missed ||
-                            c.state == CallState.rejected)
-                        .toList()
+                          .where(
+                            (c) =>
+                                c.state == CallState.missed ||
+                                c.state == CallState.rejected,
+                          )
+                          .toList()
                     : calls;
 
                 if (filtered.isEmpty) {
@@ -308,8 +345,8 @@ class _CallsTabState extends ConsumerState<CallsTab> {
             color: isSelected
                 ? Colors.white
                 : (isDark
-                    ? AppColors.darkTextSecondary
-                    : AppColors.lightTextSecondary),
+                      ? AppColors.darkTextSecondary
+                      : AppColors.lightTextSecondary),
           ),
         ),
       ),
@@ -355,8 +392,8 @@ class _CallsTabState extends ConsumerState<CallsTab> {
             color: isMissed
                 ? AppColors.error
                 : (isDark
-                    ? AppColors.darkTextPrimary
-                    : AppColors.lightTextPrimary),
+                      ? AppColors.darkTextPrimary
+                      : AppColors.lightTextPrimary),
           ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -367,8 +404,8 @@ class _CallsTabState extends ConsumerState<CallsTab> {
               isMissed
                   ? Icons.call_missed_rounded
                   : (call.state == CallState.ended
-                      ? Icons.call_made_rounded
-                      : Icons.call_received_rounded),
+                        ? Icons.call_made_rounded
+                        : Icons.call_received_rounded),
               size: 15,
               color: isMissed ? AppColors.error : AppColors.success,
             ),
@@ -403,7 +440,12 @@ class _CallsTabState extends ConsumerState<CallsTab> {
             size: 22,
           ),
           tooltip: 'Call Back',
-          onPressed: () => _initiateCall(partnerId, partnerName, call.callType),
+          onPressed: () => _initiateCall(
+            partnerId,
+            partnerName,
+            call.callType,
+            channelId: call.id > 0 ? call.id : null,
+          ),
         ),
       ),
     );

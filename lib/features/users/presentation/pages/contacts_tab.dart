@@ -37,15 +37,32 @@ class _ContactsTabState extends ConsumerState<ContactsTab> {
   }
 
   void _initiateCall(ApiUserModel user, CallType type) {
-    ref.read(callManagerProvider.notifier).startCall(
+    ref
+        .read(callManagerProvider.notifier)
+        .startCall(
+          channelId: user.channelId,
           calleePartnerId: user.partnerId,
           calleeName: user.name,
           callType: type,
         );
     if (type == CallType.video) {
-      context.push('/video-call', extra: {'callee_name': user.name, 'partner_id': user.partnerId});
+      context.push(
+        '/video-call',
+        extra: {
+          'callee_name': user.name,
+          'partner_id': user.partnerId,
+          'channel_id': user.channelId,
+        },
+      );
     } else {
-      context.push('/audio-call', extra: {'callee_name': user.name, 'partner_id': user.partnerId});
+      context.push(
+        '/audio-call',
+        extra: {
+          'callee_name': user.name,
+          'partner_id': user.partnerId,
+          'channel_id': user.channelId,
+        },
+      );
     }
   }
 
@@ -97,7 +114,10 @@ class _ContactsTabState extends ConsumerState<ContactsTab> {
                         },
                       )
                     : null,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
               ),
             ),
           ),
@@ -114,7 +134,9 @@ class _ContactsTabState extends ConsumerState<ContactsTab> {
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.5,
-                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                    color: isDark
+                        ? AppColors.darkTextSecondary
+                        : AppColors.lightTextSecondary,
                   ),
                 ),
                 Row(
@@ -154,15 +176,21 @@ class _ContactsTabState extends ConsumerState<ContactsTab> {
                     child: filteredUsers.isEmpty
                         ? EmptyStateWidget(
                             icon: Icons.people_outline_rounded,
-                            title: _searchQuery.isEmpty ? 'No Contacts Found' : 'No Results',
+                            title: _searchQuery.isEmpty
+                                ? 'No Contacts Found'
+                                : 'No Results',
                             subtitle: _searchQuery.isEmpty
                                 ? 'No users are currently available on this Odoo database.'
                                 : 'Try searching with a different name or email address.',
                           )
                         : ListView.separated(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
                             itemCount: filteredUsers.length,
-                            separatorBuilder: (_, __) => const SizedBox(height: 10),
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 10),
                             itemBuilder: (context, index) {
                               final user = filteredUsers[index];
                               return _buildContactCard(user, isDark);
@@ -180,7 +208,8 @@ class _ContactsTabState extends ConsumerState<ContactsTab> {
     if (user.isOnline) {
       subtitleText = 'Online now';
     } else if (user.lastMessageDate != null) {
-      subtitleText = 'Active ${DateFormat('MMM d, h:mm a').format(user.lastMessageDate!)}';
+      subtitleText =
+          'Active ${DateFormat('MMM d, h:mm a').format(user.lastMessageDate!)}';
     } else {
       subtitleText = user.email ?? 'Offline';
     }
@@ -226,7 +255,9 @@ class _ContactsTabState extends ConsumerState<ContactsTab> {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
-                          color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                          color: isDark
+                              ? AppColors.darkTextPrimary
+                              : AppColors.lightTextPrimary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -236,10 +267,14 @@ class _ContactsTabState extends ConsumerState<ContactsTab> {
                         subtitleText,
                         style: TextStyle(
                           fontSize: 13,
-                          fontWeight: user.isOnline ? FontWeight.w600 : FontWeight.normal,
+                          fontWeight: user.isOnline
+                              ? FontWeight.w600
+                              : FontWeight.normal,
                           color: user.isOnline
                               ? AppColors.online
-                              : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+                              : (isDark
+                                    ? AppColors.darkTextSecondary
+                                    : AppColors.lightTextSecondary),
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,

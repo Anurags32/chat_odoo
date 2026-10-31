@@ -262,6 +262,18 @@ class OdooBusService {
             }
           }
         }
+        final rtcSessions = payload['discuss.channel.rtc.session'] as List?;
+        if (rtcSessions != null && rtcSessions.isNotEmpty) {
+          for (final s in rtcSessions) {
+            if (s is Map && s['channelId'] != null) {
+              _rtcSessionsUpdateController.add({
+                'id': s['channelId'],
+                'rtcSessions': [s],
+                'name': s['name'],
+              });
+            }
+          }
+        }
       }
     }
     // 4. RTC session ended

@@ -41,17 +41,19 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
     Future.microtask(() async {
       await ref
           .read(chatApiProvider.notifier)
-          .createChannel(widget.user.partnerId);
+          .createChannel(
+            widget.user.partnerId,
+            channelId: widget.user.channelId,
+          );
 
       final chatState = ref.read(chatApiProvider);
       if (chatState.channel != null) {
         final lastId = chatState.messages.isNotEmpty
             ? chatState.messages.last.id
             : 0;
-        await ref.read(webSocketProvider.notifier).connect(
-              channelId: chatState.channel!.id,
-              lastMessageId: lastId,
-            );
+        await ref
+            .read(webSocketProvider.notifier)
+            .connect(channelId: chatState.channel!.id, lastMessageId: lastId);
       }
     });
   }
@@ -74,34 +76,41 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
   }
 
   void _sendAttachment(MessageAttachment attachment) {
-    ref.read(chatApiProvider.notifier).sendMessage(
-          '',
-          attachments: [attachment],
-        );
+    ref
+        .read(chatApiProvider.notifier)
+        .sendMessage('', attachments: [attachment]);
     _scrollToBottom();
   }
 
   void _initiateCall(CallType type) {
     final chatState = ref.read(chatApiProvider);
-    final channelId = chatState.channel?.id;
-    ref.read(callManagerProvider.notifier).startCall(
+    final channelId = chatState.channel?.id ?? widget.user.channelId;
+    ref
+        .read(callManagerProvider.notifier)
+        .startCall(
           channelId: channelId,
           calleePartnerId: widget.user.partnerId,
           calleeName: widget.user.name,
           callType: type,
         );
     if (type == CallType.video) {
-      context.push('/video-call', extra: {
-        'callee_name': widget.user.name,
-        'partner_id': widget.user.partnerId,
-        'channel_id': channelId,
-      });
+      context.push(
+        '/video-call',
+        extra: {
+          'callee_name': widget.user.name,
+          'partner_id': widget.user.partnerId,
+          'channel_id': channelId,
+        },
+      );
     } else {
-      context.push('/audio-call', extra: {
-        'callee_name': widget.user.name,
-        'partner_id': widget.user.partnerId,
-        'channel_id': channelId,
-      });
+      context.push(
+        '/audio-call',
+        extra: {
+          'callee_name': widget.user.name,
+          'partner_id': widget.user.partnerId,
+          'channel_id': channelId,
+        },
+      );
     }
   }
 
@@ -143,7 +152,10 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
       }
     });
 
-    final allMessages = _mergeMessages(chatState.messages, wsState.liveMessages);
+    final allMessages = _mergeMessages(
+      chatState.messages,
+      wsState.liveMessages,
+    );
 
     return Scaffold(
       backgroundColor: isDark ? AppColors.darkBg : AppColors.lightBg,
@@ -156,13 +168,13 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
                     child: CircularProgressIndicator(color: AppColors.primary),
                   )
                 : allMessages.isEmpty
-                    ? EmptyStateWidget(
-                        icon: Icons.chat_bubble_outline_rounded,
-                        title: 'No Messages Yet',
-                        subtitle:
-                            'Say hello to ${widget.user.name} and start your conversation!',
-                      )
-                    : _buildMessagesList(allMessages, isDark),
+                ? EmptyStateWidget(
+                    icon: Icons.chat_bubble_outline_rounded,
+                    title: 'No Messages Yet',
+                    subtitle:
+                        'Say hello to ${widget.user.name} and start your conversation!',
+                  )
+                : _buildMessagesList(allMessages, isDark),
           ),
 
           // Typing indicator banner
@@ -177,7 +189,9 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
                     height: 12,
                     child: CircularProgressIndicator(
                       strokeWidth: 1.5,
-                      valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        AppColors.primary,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -186,7 +200,9 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
                     style: TextStyle(
                       fontSize: 12,
                       fontStyle: FontStyle.italic,
-                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                      color: isDark
+                          ? AppColors.darkTextSecondary
+                          : AppColors.lightTextSecondary,
                     ),
                   ),
                 ],
@@ -245,7 +261,9 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
-                    color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                    color: isDark
+                        ? AppColors.darkTextPrimary
+                        : AppColors.lightTextPrimary,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -256,7 +274,9 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
                     fontSize: 12,
                     color: widget.user.isOnline
                         ? AppColors.online
-                        : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+                        : (isDark
+                              ? AppColors.darkTextSecondary
+                              : AppColors.lightTextSecondary),
                   ),
                 ),
               ],
@@ -289,7 +309,8 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
       itemCount: messages.length,
       itemBuilder: (context, index) {
         final message = messages[index];
-        final isMe = message.isMe ?? (message.author.id != widget.user.partnerId);
+        final isMe =
+            message.isMe ?? (message.author.id != widget.user.partnerId);
         return _buildMessageBubble(message, isMe, isDark);
       },
     );
@@ -301,7 +322,9 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
-        mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: isMe
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!isMe) ...[
@@ -329,7 +352,9 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
                 border: isMe
                     ? null
                     : Border.all(
-                        color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                        color: isDark
+                            ? AppColors.darkBorder
+                            : AppColors.lightBorder,
                       ),
                 boxShadow: [
                   BoxShadow(
@@ -340,8 +365,9 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
                 ],
               ),
               child: Column(
-                crossAxisAlignment:
-                    isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                crossAxisAlignment: isMe
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
                 children: [
                   if (cleanBody.isNotEmpty)
                     Text(
@@ -351,8 +377,8 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
                         color: isMe
                             ? Colors.white
                             : (isDark
-                                ? AppColors.darkTextPrimary
-                                : AppColors.lightTextPrimary),
+                                  ? AppColors.darkTextPrimary
+                                  : AppColors.lightTextPrimary),
                         height: 1.35,
                       ),
                     ),
@@ -367,8 +393,8 @@ class _RealChatScreenState extends ConsumerState<RealChatScreen>
                           color: isMe
                               ? Colors.white.withValues(alpha: 0.75)
                               : (isDark
-                                  ? AppColors.darkTextSecondary
-                                  : AppColors.lightTextSecondary),
+                                    ? AppColors.darkTextSecondary
+                                    : AppColors.lightTextSecondary),
                         ),
                       ),
                       if (isMe) ...[
