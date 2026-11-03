@@ -88,40 +88,112 @@ class AppRouter {
       GoRoute(
         path: chat,
         pageBuilder: (context, state) {
-          final user = state.extra as ApiUserModel;
+          ApiUserModel user;
+          if (state.extra is ApiUserModel) {
+            user = state.extra as ApiUserModel;
+          } else if (state.extra is Map<String, dynamic>) {
+            final map = state.extra as Map<String, dynamic>;
+            user = ApiUserModel(
+              id: (map['id'] is int)
+                  ? map['id'] as int
+                  : int.tryParse(map['id']?.toString() ?? '0') ?? 0,
+              name:
+                  map['name'] as String? ??
+                  map['sender_name'] as String? ??
+                  'Chat',
+              email: map['email'] as String?,
+              partnerId: (map['partner_id'] is int)
+                  ? map['partner_id'] as int
+                  : int.tryParse(map['partner_id']?.toString() ?? '0') ?? 0,
+              channelId: (map['channel_id'] is int)
+                  ? map['channel_id'] as int
+                  : int.tryParse(map['channel_id']?.toString() ?? ''),
+              avatar: map['avatar'] as String?,
+              imStatus: map['im_status'] as String? ?? 'offline',
+            );
+          } else {
+            final q = state.uri.queryParameters;
+            user = ApiUserModel(
+              id: int.tryParse(q['id'] ?? '0') ?? 0,
+              name: q['name'] ?? q['sender_name'] ?? 'Chat',
+              email: q['email'],
+              partnerId: int.tryParse(q['partner_id'] ?? '0') ?? 0,
+              channelId: int.tryParse(q['channel_id'] ?? ''),
+              avatar: q['avatar'],
+              imStatus: q['im_status'] ?? 'offline',
+            );
+          }
+
           return CustomTransitionPage(
             key: state.pageKey,
             child: RealChatScreen(user: user),
-            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-              const begin = Offset(1.0, 0.0);
-              const end = Offset.zero;
-              const curve = Curves.easeInOut;
-              var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-              return SlideTransition(
-                position: animation.drive(tween),
-                child: child,
-              );
-            },
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) {
+                  const begin = Offset(1.0, 0.0);
+                  const end = Offset.zero;
+                  const curve = Curves.easeInOut;
+                  var tween = Tween(
+                    begin: begin,
+                    end: end,
+                  ).chain(CurveTween(curve: curve));
+                  return SlideTransition(
+                    position: animation.drive(tween),
+                    child: child,
+                  );
+                },
           );
         },
       ),
       GoRoute(
         path: groupChat,
         pageBuilder: (context, state) {
-          final group = state.extra as GroupModel;
+          GroupModel group;
+          if (state.extra is GroupModel) {
+            group = state.extra as GroupModel;
+          } else if (state.extra is Map<String, dynamic>) {
+            final map = state.extra as Map<String, dynamic>;
+            group = GroupModel(
+              channelId: (map['channel_id'] is int)
+                  ? map['channel_id'] as int
+                  : int.tryParse(map['channel_id']?.toString() ?? '0') ?? 0,
+              name:
+                  map['group_name'] as String? ??
+                  map['name'] as String? ??
+                  'Group Chat',
+              memberCount: (map['member_count'] is int)
+                  ? map['member_count'] as int
+                  : int.tryParse(map['member_count']?.toString() ?? '0') ?? 0,
+              avatar: map['avatar'] as String?,
+              description: map['description'] as String?,
+            );
+          } else {
+            final q = state.uri.queryParameters;
+            group = GroupModel(
+              channelId: int.tryParse(q['channel_id'] ?? '0') ?? 0,
+              name: q['name'] ?? q['group_name'] ?? 'Group Chat',
+              memberCount: int.tryParse(q['member_count'] ?? '0') ?? 0,
+              avatar: q['avatar'],
+              description: q['description'],
+            );
+          }
+
           return CustomTransitionPage(
             key: state.pageKey,
             child: GroupChatScreen(group: group),
-            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-              const begin = Offset(1.0, 0.0);
-              const end = Offset.zero;
-              const curve = Curves.easeInOut;
-              var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-              return SlideTransition(
-                position: animation.drive(tween),
-                child: child,
-              );
-            },
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) {
+                  const begin = Offset(1.0, 0.0);
+                  const end = Offset.zero;
+                  const curve = Curves.easeInOut;
+                  var tween = Tween(
+                    begin: begin,
+                    end: end,
+                  ).chain(CurveTween(curve: curve));
+                  return SlideTransition(
+                    position: animation.drive(tween),
+                    child: child,
+                  );
+                },
           );
         },
       ),
@@ -141,9 +213,11 @@ class AppRouter {
         path: groupCall,
         pageBuilder: (context, state) {
           final extra = state.extra as Map<String, dynamic>? ?? {};
-          final channelName = extra['channel_name'] as String? ?? 'Group Conference';
+          final channelName =
+              extra['channel_name'] as String? ?? 'Group Conference';
           final callType = extra['call_type'] as CallType? ?? CallType.video;
-          final members = (extra['members'] as List?)?.cast<String>() ?? <String>[];
+          final members =
+              (extra['members'] as List?)?.cast<String>() ?? <String>[];
 
           return MaterialPage(
             child: GroupCallScreen(
@@ -156,21 +230,18 @@ class AppRouter {
       ),
       GoRoute(
         path: callHistory,
-        pageBuilder: (context, state) => const MaterialPage(
-          child: CallHistoryScreen(),
-        ),
+        pageBuilder: (context, state) =>
+            const MaterialPage(child: CallHistoryScreen()),
       ),
       GoRoute(
         path: rtcConnect,
-        pageBuilder: (context, state) => const MaterialPage(
-          child: RtcConnectionScreen(),
-        ),
+        pageBuilder: (context, state) =>
+            const MaterialPage(child: RtcConnectionScreen()),
       ),
       GoRoute(
         path: rtcLogs,
-        pageBuilder: (context, state) => const MaterialPage(
-          child: RtcDebugLogScreen(),
-        ),
+        pageBuilder: (context, state) =>
+            const MaterialPage(child: RtcDebugLogScreen()),
       ),
     ],
   );

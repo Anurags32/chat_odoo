@@ -176,11 +176,18 @@ class WebSocketNotifier extends StateNotifier<WebSocketState> {
 
     if (id == null) return null;
 
+    final attachmentsRaw = m['attachments'] as List<dynamic>?;
+    final attachments = attachmentsRaw
+            ?.map((a) => MessageAttachment.fromJson(a as Map<String, dynamic>))
+            .toList() ??
+        const <MessageAttachment>[];
+
     return ChatMessageModel(
       id: id,
       body: body,
       date: date,
       author: MessageAuthor(id: authorId, name: authorName),
+      attachments: attachments,
     );
   }
 

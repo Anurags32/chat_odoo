@@ -27,10 +27,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
   void _initiateCall(CallType type) async {
     final partnerId = int.tryParse(widget.user.id) ?? 0;
-    final success = await ref.read(callManagerProvider.notifier).startCall(
-      calleePartnerId: partnerId,
-      callType: type,
-    );
+    final success = await ref
+        .read(callManagerProvider.notifier)
+        .startCall(calleePartnerId: partnerId, callType: type);
     if (success && mounted) {
       if (type == CallType.video) {
         context.push('/video-call');
@@ -400,7 +399,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                     ],
                   ),
                 ),
-              MessageBubble(message: message, isMe: isMe),
+              MessageBubble(message: message.toChatMessageModel(), isMe: isMe),
             ],
           ),
         );

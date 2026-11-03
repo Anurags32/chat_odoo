@@ -113,6 +113,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
   Future<bool> sendMessage(
     String body, {
     List<MessageAttachment>? attachments,
+    String? replyToText,
+    String? replyToAuthor,
+    int? replyToId,
   }) async {
     if (state.channel == null) {
       state = state.copyWith(error: 'No active channel');
@@ -130,17 +133,35 @@ class ChatNotifier extends StateNotifier<ChatState> {
     if (response.success && response.data != null) {
       List<ChatMessageModel> updatedMessages = [...state.messages];
       if (response.data!.message != null) {
-        updatedMessages.add(response.data!.message!);
+        var msg = response.data!.message!;
+        if (msg.attachments.isEmpty && attachments != null && attachments.isNotEmpty) {
+          msg = msg.copyWith(attachments: attachments);
+        }
+        if (replyToText != null) {
+          msg = msg.copyWith(
+            replyToText: replyToText,
+            replyToAuthor: replyToAuthor,
+            replyToId: replyToId,
+          );
+        }
+        updatedMessages.add(msg);
       } else {
         // Optimistic message append if API didn't return full model
         updatedMessages.add(
           ChatMessageModel(
-            id: response.data!.messageId,
+            id: response.data!.messageId > 0
+                ? response.data!.messageId
+                : DateTime.now().millisecondsSinceEpoch,
             body: body,
             date: DateTime.now().toIso8601String(),
             channelId: state.channel!.id,
             author: MessageAuthor(id: 0, name: 'You'),
             isMe: true,
+            attachments: attachments ?? const [],
+            replyToText: replyToText,
+            replyToAuthor: replyToAuthor,
+            replyToId: replyToId,
+            deliveryStatus: 'read',
           ),
         );
       }
@@ -162,6 +183,35 @@ class ChatNotifier extends StateNotifier<ChatState> {
         error: response.message ?? 'Failed to send message',
       );
       return false;
+    }
+  }
+
+  void addReaction(int messageId, String emoji) {
+    final updated = state.messages.map((m) {
+      if (m.id == messageId) {
+        final reactions = Map<String, int>.from(m.reactions);
+        reactions[emoji] = (reactions[emoji] ?? 0) + 1;
+        return m.copyWith(reactions: reactions);
+      }
+      return m;
+    }).toList();
+    state = state.copyWith(messages: updated);
+    if (state.channel != null) {
+      StorageService.instance.cacheMessages(
+        state.channel!.partnerId,
+        updated.map((m) => m.toJson()).toList(),
+      );
+    }
+  }
+
+  void deleteMessage(int messageId) {
+    final updated = state.messages.where((m) => m.id != messageId).toList();
+    state = state.copyWith(messages: updated);
+    if (state.channel != null) {
+      StorageService.instance.cacheMessages(
+        state.channel!.partnerId,
+        updated.map((m) => m.toJson()).toList(),
+      );
     }
   }
 

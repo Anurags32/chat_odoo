@@ -302,8 +302,9 @@ class WebRtcService {
 
   void _dcSend(String event, Map<String, dynamic> payload) {
     final dc = _dataChannel;
-    if (dc == null || dc.state != RTCDataChannelState.RTCDataChannelOpen)
+    if (dc == null || dc.state != RTCDataChannelState.RTCDataChannelOpen) {
       return;
+    }
     dc.send(
       RTCDataChannelMessage(
         jsonEncode({
@@ -371,7 +372,9 @@ class WebRtcService {
       if (st == RTCSignalingState.RTCSignalingStateStable ||
           st == RTCSignalingState.RTCSignalingStateHaveRemoteOffer ||
           st == null) {
-        debugPrint('[WebRTC] Ignoring redundant answer: invalid signaling state $st');
+        debugPrint(
+          '[WebRTC] Ignoring redundant answer: invalid signaling state $st',
+        );
         return;
       }
       final remoteDesc = RTCSessionDescription(

@@ -307,10 +307,12 @@ class RtcCallService extends ChangeNotifier {
         }
 
         final entry = <String, dynamic>{'urls': urlsList};
-        if (username != null && username.isNotEmpty)
+        if (username != null && username.isNotEmpty) {
           entry['username'] = username;
-        if (credential != null && credential.isNotEmpty)
+        }
+        if (credential != null && credential.isNotEmpty) {
           entry['credential'] = credential;
+        }
         result.add(entry);
       }
     }
@@ -812,7 +814,8 @@ class RtcCallService extends ChangeNotifier {
     }
 
     final selfId = _selfSessionId ?? 0;
-    final isStable = pc.signalingState == RTCSignalingState.RTCSignalingStateStable;
+    final isStable =
+        pc.signalingState == RTCSignalingState.RTCSignalingStateStable;
     final hasLocalOffer =
         pc.signalingState == RTCSignalingState.RTCSignalingStateHaveLocalOffer;
     final collision = !isStable || peer.isBuildingOffer;

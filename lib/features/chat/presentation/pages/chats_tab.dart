@@ -47,6 +47,22 @@ class _ChatsTabState extends ConsumerState<ChatsTab> {
     context.push('/group-chat', extra: group);
   }
 
+  String _formatTileTime(DateTime? date) {
+    if (date == null) return '';
+    final now = DateTime.now();
+    if (date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day) {
+      return DateFormat('h:mm a').format(date);
+    }
+    if (date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day - 1) {
+      return 'Yesterday';
+    }
+    return DateFormat('dd/MM/yy').format(date);
+  }
+
   void _showCreateGroupDialog() {
     showDialog(
       context: context,
@@ -78,7 +94,9 @@ class _ChatsTabState extends ConsumerState<ChatsTab> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                    color: isDark
+                        ? AppColors.darkBorder
+                        : AppColors.lightBorder,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -125,8 +143,8 @@ class _ChatsTabState extends ConsumerState<ChatsTab> {
                             color: u.isOnline
                                 ? AppColors.online
                                 : (isDark
-                                    ? AppColors.darkTextSecondary
-                                    : AppColors.lightTextSecondary),
+                                      ? AppColors.darkTextSecondary
+                                      : AppColors.lightTextSecondary),
                           ),
                         ),
                         trailing: const Icon(
@@ -168,8 +186,10 @@ class _ChatsTabState extends ConsumerState<ChatsTab> {
       return g.name.toLowerCase().contains(_searchQuery.toLowerCase());
     }).toList();
 
-    final bool showDirect = _selectedFilterIndex == 0 || _selectedFilterIndex == 1;
-    final bool showGroups = _selectedFilterIndex == 0 || _selectedFilterIndex == 2;
+    final bool showDirect =
+        _selectedFilterIndex == 0 || _selectedFilterIndex == 1;
+    final bool showGroups =
+        _selectedFilterIndex == 0 || _selectedFilterIndex == 2;
 
     final bool isLoading = usersState.isLoading && groupState.isLoading;
 
@@ -212,7 +232,10 @@ class _ChatsTabState extends ConsumerState<ChatsTab> {
                         },
                       )
                     : null,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
               ),
             ),
           ),
@@ -226,7 +249,11 @@ class _ChatsTabState extends ConsumerState<ChatsTab> {
                 const SizedBox(width: 8),
                 _buildFilterChip(1, 'Direct (${filteredUsers.length})', isDark),
                 const SizedBox(width: 8),
-                _buildFilterChip(2, 'Groups (${filteredGroups.length})', isDark),
+                _buildFilterChip(
+                  2,
+                  'Groups (${filteredGroups.length})',
+                  isDark,
+                ),
               ],
             ),
           ),
@@ -243,7 +270,8 @@ class _ChatsTabState extends ConsumerState<ChatsTab> {
                         ref.read(groupApiProvider.notifier).fetchAllGroups(),
                       ]);
                     },
-                    child: (showDirect && filteredUsers.isNotEmpty) ||
+                    child:
+                        (showDirect && filteredUsers.isNotEmpty) ||
                             (showGroups && filteredGroups.isNotEmpty)
                         ? ListView(
                             padding: const EdgeInsets.symmetric(
@@ -314,8 +342,8 @@ class _ChatsTabState extends ConsumerState<ChatsTab> {
             color: isSelected
                 ? Colors.white
                 : (isDark
-                    ? AppColors.darkTextSecondary
-                    : AppColors.lightTextSecondary),
+                      ? AppColors.darkTextSecondary
+                      : AppColors.lightTextSecondary),
           ),
         ),
       ),
@@ -341,9 +369,7 @@ class _ChatsTabState extends ConsumerState<ChatsTab> {
 
   Widget _buildGroupTile(GroupModel group, bool isDark) {
     final lastMessage = group.lastMessage ?? 'No messages yet';
-    final lastDate = group.lastMessageTime != null
-        ? DateFormat('h:mm a').format(group.lastMessageTime!)
-        : '';
+    final lastDate = _formatTileTime(group.lastMessageTime);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -357,93 +383,99 @@ class _ChatsTabState extends ConsumerState<ChatsTab> {
           ),
         ),
         child: ListTile(
-        onTap: () => _openGroupChat(group),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-        leading: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            gradient: const LinearGradient(
-              colors: [Color(0xFF8B5CF6), Color(0xFF6366F1)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+          onTap: () => _openGroupChat(group),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 4,
           ),
-          child: const Center(
-            child: Icon(Icons.group_rounded, color: Colors.white, size: 24),
-          ),
-        ),
-        title: Text(
-          group.name,
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-            color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: Row(
-          children: [
-            Expanded(
-              child: Text(
-                lastMessage,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: isDark
-                      ? AppColors.darkTextSecondary
-                      : AppColors.lightTextSecondary,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+          leading: Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              gradient: const LinearGradient(
+                colors: [Color(0xFF8B5CF6), Color(0xFF6366F1)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
             ),
-          ],
-        ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            if (lastDate.isNotEmpty)
-              Text(
-                lastDate,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: isDark
-                      ? AppColors.darkTextSecondary
-                      : AppColors.lightTextSecondary,
-                ),
-              ),
-            if (group.unreadCount > 0) ...[
-              const SizedBox(height: 4),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppColors.primary,
-                  borderRadius: BorderRadius.circular(10),
-                ),
+            child: const Center(
+              child: Icon(Icons.group_rounded, color: Colors.white, size: 24),
+            ),
+          ),
+          title: Text(
+            group.name,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: isDark
+                  ? AppColors.darkTextPrimary
+                  : AppColors.lightTextPrimary,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Row(
+            children: [
+              Expanded(
                 child: Text(
-                  '${group.unreadCount}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
+                  lastMessage,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark
+                        ? AppColors.darkTextSecondary
+                        : AppColors.lightTextSecondary,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
-          ],
+          ),
+          trailing: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (lastDate.isNotEmpty)
+                Text(
+                  lastDate,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark
+                        ? AppColors.darkTextSecondary
+                        : AppColors.lightTextSecondary,
+                  ),
+                ),
+              if (group.unreadCount > 0) ...[
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '${group.unreadCount}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   Widget _buildDirectChatTile(ApiUserModel user, bool isDark) {
-    final lastDate = user.lastMessageDate != null
-        ? DateFormat('MMM d, h:mm a').format(user.lastMessageDate!)
-        : '';
+    final lastDate = _formatTileTime(user.lastMessageDate);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -457,45 +489,50 @@ class _ChatsTabState extends ConsumerState<ChatsTab> {
           ),
         ),
         child: ListTile(
-        onTap: () => _openUserChat(user),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-        leading: UserAvatarWidget(user: user, radius: 24),
-        title: Text(
-          user.name,
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-            color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+          onTap: () => _openUserChat(user),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 4,
           ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: Text(
-          user.isOnline ? 'Online now' : (user.email ?? 'Offline'),
-          style: TextStyle(
-            fontSize: 13,
-            color: user.isOnline
-                ? AppColors.online
-                : (isDark
-                    ? AppColors.darkTextSecondary
-                    : AppColors.lightTextSecondary),
+          leading: UserAvatarWidget(user: user, radius: 24),
+          title: Text(
+            user.name,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: isDark
+                  ? AppColors.darkTextPrimary
+                  : AppColors.lightTextPrimary,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+          subtitle: Text(
+            user.isOnline ? 'Online now' : (user.email ?? 'Offline'),
+            style: TextStyle(
+              fontSize: 13,
+              color: user.isOnline
+                  ? AppColors.online
+                  : (isDark
+                        ? AppColors.darkTextSecondary
+                        : AppColors.lightTextSecondary),
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: lastDate.isNotEmpty
+              ? Text(
+                  lastDate,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark
+                        ? AppColors.darkTextSecondary
+                        : AppColors.lightTextSecondary,
+                  ),
+                )
+              : const Icon(Icons.arrow_forward_ios_rounded, size: 12),
         ),
-        trailing: lastDate.isNotEmpty
-            ? Text(
-                lastDate,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: isDark
-                      ? AppColors.darkTextSecondary
-                      : AppColors.lightTextSecondary,
-                ),
-              )
-            : const Icon(Icons.arrow_forward_ios_rounded, size: 12),
       ),
-    ),
-  );
-}
+    );
+  }
 }

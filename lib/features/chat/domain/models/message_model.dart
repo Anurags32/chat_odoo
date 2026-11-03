@@ -1,3 +1,5 @@
+import 'channel_model.dart';
+
 class MessageModel {
   final String id;
   final String senderId;
@@ -42,6 +44,19 @@ class MessageModel {
       'isRead': isRead,
       'type': type.toString().split('.').last,
     };
+  }
+
+  ChatMessageModel toChatMessageModel() {
+    return ChatMessageModel(
+      id: int.tryParse(id) ?? DateTime.now().millisecondsSinceEpoch,
+      body: message,
+      date: timestamp.toIso8601String(),
+      author: MessageAuthor(
+        id: int.tryParse(senderId) ?? 0,
+        name: 'User $senderId',
+      ),
+      deliveryStatus: isRead ? 'read' : 'sent',
+    );
   }
 }
 

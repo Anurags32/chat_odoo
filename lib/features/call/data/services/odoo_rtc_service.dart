@@ -557,8 +557,9 @@ class OdooRtcService {
     pc.onRenegotiationNeeded = () async {
       final peer = _peers[id];
       if (peer == null || peer.pc != pc) return;
-      if (pc.signalingState != RTCSignalingState.RTCSignalingStateStable)
+      if (pc.signalingState != RTCSignalingState.RTCSignalingStateStable) {
         return;
+      }
       if (peer.isBuildingOffer) return;
       peer.isBuildingOffer = true;
       try {
@@ -693,8 +694,9 @@ class OdooRtcService {
         final peer = _peers[id];
         if (peer == null || _channelId == null) return;
         final state = peer.pc.connectionState;
-        if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected)
+        if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
           return;
+        }
         _log('recovering peer $id');
         _enqueue('disconnect', null, [id]);
         await _removePeer(id);

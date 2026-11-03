@@ -1,4 +1,6 @@
 // Group Member Model
+import '../../../chat/domain/models/channel_model.dart';
+
 class GroupMember {
   final int partnerId;
   final String name;
@@ -217,6 +219,24 @@ class GroupMessage {
   // Strip HTML tags from body
   String get plainBody {
     return body.replaceAll(RegExp(r'<[^>]*>'), '');
+  }
+
+  ChatMessageModel toChatMessageModel() {
+    return ChatMessageModel(
+      id: messageId,
+      body: body,
+      date: date.toIso8601String(),
+      author: MessageAuthor(id: senderId, name: senderName),
+      isMe: isMe,
+      attachments: attachments.map((a) {
+        if (a is MessageAttachment) return a;
+        if (a is Map<String, dynamic>) return MessageAttachment.fromJson(a);
+        return MessageAttachment(
+          filename: 'attachment',
+          mimetype: 'application/octet-stream',
+        );
+      }).toList(),
+    );
   }
 }
 

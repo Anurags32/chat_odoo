@@ -122,6 +122,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     title: senderName,
     body: messageText,
     payload: data.isNotEmpty ? data : {'title': senderName, 'body': messageText},
+    avatarBase64: data['avatar'] as String?,
+    groupName: data['group_name'] as String?,
   );
 }
 
@@ -228,6 +230,8 @@ class PushNotificationService {
             title: senderName,
             body: messageText,
             payload: data,
+            avatarBase64: data['avatar'] as String?,
+            groupName: data['group_name'] as String?,
           );
         }
       });
