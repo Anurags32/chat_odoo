@@ -95,6 +95,9 @@ class CallStateData {
   final bool isSpeakerOn;
   final int durationSeconds;
   final String? error;
+  final int? channelId;
+  final int? remoteSessionId;
+  final String? partnerName;
 
   CallStateData({
     this.activeCall,
@@ -105,6 +108,9 @@ class CallStateData {
     this.isSpeakerOn = true,
     this.durationSeconds = 0,
     this.error,
+    this.channelId,
+    this.remoteSessionId,
+    this.partnerName,
   });
 
   CallStateData copyWith({
@@ -116,6 +122,9 @@ class CallStateData {
     bool? isSpeakerOn,
     int? durationSeconds,
     String? error,
+    int? channelId,
+    int? remoteSessionId,
+    String? partnerName,
     bool clearActiveCall = false,
   }) {
     return CallStateData(
@@ -127,6 +136,9 @@ class CallStateData {
       isSpeakerOn: isSpeakerOn ?? this.isSpeakerOn,
       durationSeconds: durationSeconds ?? this.durationSeconds,
       error: error,
+      channelId: channelId ?? this.channelId,
+      remoteSessionId: remoteSessionId ?? this.remoteSessionId,
+      partnerName: partnerName ?? this.partnerName,
     );
   }
 }
@@ -138,6 +150,7 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
   final ChatApiService _chatApi;
   StreamSubscription? _rtcSessionsSub;
   StreamSubscription? _sessionEndedSub;
+  bool _isEndingCall = false;
 
   CallManagerNotifier(this._rtcService, this._webrtc, this._chatApi)
     : super(CallStateData()) {
@@ -155,13 +168,16 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
     _sessionEndedSub = OdooBusService.instance.sessionEnded.listen((sessionId) {
       if (!mounted) return;
       if (state.status == CallState.ringing && state.isIncoming) {
-        RtcLogger.instance.log(
-          'Caller cancelled the incoming call (session $sessionId ended)',
-          tag: 'CALL-NOTIF',
-        );
-        endCall();
-        if (state.activeCall?.id != null) {
-          CallKitService.endCallStatic(state.activeCall!.id);
+        if (state.remoteSessionId == null ||
+            state.remoteSessionId == sessionId) {
+          RtcLogger.instance.log(
+            'Caller cancelled the incoming call (session $sessionId ended)',
+            tag: 'CALL-NOTIF',
+          );
+          endCall();
+          if (state.activeCall?.id != null) {
+            CallKitService.endCallStatic(state.activeCall!.id);
+          }
         }
       }
     });
@@ -172,8 +188,9 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
     final chId = data['id'] as int?;
     if (chId == null || chId <= 0) return;
 
-    // If we are already engaged in a call, ignore other channel session updates
-    if (state.status != CallState.idle) {
+    // If we are already engaged in a call or dialing, ignore channel session updates
+    if (state.status != CallState.idle ||
+        _rtcService.status != CallStatus.idle) {
       return;
     }
 
@@ -216,7 +233,11 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
         'Incoming Odoo 18 call detected on channel $chId from remote session $remoteSessionId ($callerName)',
         tag: 'CALL-NOTIF',
       );
-      showIncomingCall(channelId: chId, callerName: callerName);
+      showIncomingCall(
+        channelId: chId,
+        callerName: callerName,
+        remoteSessionId: remoteSessionId,
+      );
       try {
         CallKitService.showIncomingCallStatic(
           callId: chId,
@@ -233,6 +254,13 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
     CallState mappedStatus;
     switch (_rtcService.status) {
       case CallStatus.idle:
+        // Do not stomp an ending/ended state immediately
+        if (state.status == CallState.ended ||
+            state.status == CallState.failed ||
+            state.status == CallState.rejected ||
+            state.status == CallState.cancelled) {
+          return;
+        }
         mappedStatus = CallState.idle;
         break;
       case CallStatus.ringing:
@@ -268,7 +296,30 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
     String? calleeName,
     CallType callType = CallType.audio,
   }) async {
+    _isEndingCall = false;
+    final displayName = calleeName ?? 'Contact #$calleePartnerId';
     int targetChannelId = channelId ?? 0;
+
+    // IMMEDIATE STATE LOCK: Enter connecting state immediately to block incoming call updates
+    state = state.copyWith(
+      activeCall: CallModel(
+        id: targetChannelId,
+        callType: callType,
+        state: CallState.connecting,
+        startTime: DateTime.now(),
+        caller: CallParticipant(
+          partnerId: _rtcService.selfSessionId ?? 0,
+          name: 'Me',
+        ),
+        callee: CallParticipant(partnerId: calleePartnerId, name: displayName),
+      ),
+      status: CallState.connecting,
+      isIncoming: false,
+      channelId: targetChannelId,
+      partnerName: displayName,
+      isVideoOff: callType == CallType.audio,
+    );
+
     if (targetChannelId <= 0) {
       try {
         final res = await _chatApi.createChannel(
@@ -289,6 +340,12 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
       targetChannelId = CallConfig.defaultChannelId;
     }
 
+    // Update state with resolved channel id
+    state = state.copyWith(
+      channelId: targetChannelId,
+      activeCall: state.activeCall?.copyWith(id: targetChannelId),
+    );
+
     OdooBusService.instance.addChannel('discuss.channel_$targetChannelId');
     OdooBusService.instance.addChannel('channel_$targetChannelId');
 
@@ -299,25 +356,13 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
     );
     if (!mounted) return success;
 
-    if (success) {
-      state = state.copyWith(
-        activeCall: CallModel(
-          id: targetChannelId,
-          callType: callType,
-          state: CallState.connecting,
-          startTime: DateTime.now(),
-          caller: CallParticipant(
-            partnerId: _rtcService.selfSessionId ?? 1,
-            name: 'Me',
-          ),
-          callee: CallParticipant(
-            partnerId: calleePartnerId,
-            name: calleeName ?? 'Contact #$calleePartnerId',
-          ),
-        ),
-        status: CallState.connecting,
-        isIncoming: false,
-      );
+    if (!success) {
+      state = state.copyWith(status: CallState.failed);
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (mounted && state.status == CallState.failed) {
+          state = state.copyWith(status: CallState.idle, clearActiveCall: true);
+        }
+      });
     }
     return success;
   }
@@ -335,8 +380,14 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
     );
   }
 
-  void showIncomingCall({required int channelId, required String callerName}) {
+  void showIncomingCall({
+    required int channelId,
+    required String callerName,
+    int? remoteSessionId,
+  }) {
     if (!mounted) return;
+    if (state.status != CallState.idle) return;
+
     state = state.copyWith(
       activeCall: CallModel(
         id: channelId,
@@ -348,6 +399,9 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
       ),
       status: CallState.ringing,
       isIncoming: true,
+      channelId: channelId,
+      partnerName: callerName,
+      remoteSessionId: remoteSessionId,
     );
   }
 
@@ -357,6 +411,8 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
     required CallType callType,
   }) {
     if (!mounted) return;
+    if (state.status != CallState.idle) return;
+
     state = state.copyWith(
       activeCall: CallModel(
         id: callId,
@@ -368,6 +424,8 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
       ),
       status: CallState.ringing,
       isIncoming: true,
+      channelId: callId,
+      partnerName: callerName,
     );
   }
 
@@ -387,8 +445,11 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
   }
 
   Future<bool> acceptCall() async {
+    if (state.status != CallState.ringing) return false;
+
     final channelId = state.activeCall?.id ?? _rtcService.channelId;
     if (channelId <= 0) return false;
+
     if (mounted) {
       state = state.copyWith(status: CallState.connecting);
     }
@@ -398,30 +459,62 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
       isVideo: isVideo,
     );
     if (!mounted) return success;
+
+    if (!success) {
+      state = state.copyWith(status: CallState.failed);
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (mounted && state.status == CallState.failed) {
+          state = state.copyWith(status: CallState.idle, clearActiveCall: true);
+        }
+      });
+    }
     return success;
   }
 
   Future<void> rejectCall({String reason = 'rejected'}) async {
+    if (_isEndingCall) return;
+    _isEndingCall = true;
+
     if (state.activeCall != null) {
       final record = state.activeCall!.copyWith(state: CallState.rejected);
       StorageService.instance.saveCallRecord(record.toJson());
     }
     await _rtcService.hangUp();
     if (!mounted) return;
-    state = state.copyWith(status: CallState.rejected, clearActiveCall: true);
+    state = state.copyWith(status: CallState.rejected);
+
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (mounted) {
+        state = state.copyWith(status: CallState.idle, clearActiveCall: true);
+        _isEndingCall = false;
+      }
+    });
   }
 
   Future<void> cancelCall([int? callId]) async {
+    if (_isEndingCall) return;
+    _isEndingCall = true;
+
     if (state.activeCall != null) {
       final record = state.activeCall!.copyWith(state: CallState.cancelled);
       StorageService.instance.saveCallRecord(record.toJson());
     }
     await _rtcService.hangUp();
     if (!mounted) return;
-    state = state.copyWith(status: CallState.cancelled, clearActiveCall: true);
+    state = state.copyWith(status: CallState.cancelled);
+
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (mounted) {
+        state = state.copyWith(status: CallState.idle, clearActiveCall: true);
+        _isEndingCall = false;
+      }
+    });
   }
 
   Future<void> endCall() async {
+    if (_isEndingCall) return;
+    _isEndingCall = true;
+
     if (state.activeCall != null) {
       final record = state.activeCall!.copyWith(
         state: CallState.ended,
@@ -431,11 +524,19 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
     }
     await _rtcService.hangUp();
     if (!mounted) return;
-    state = state.copyWith(status: CallState.ended, clearActiveCall: true);
+    state = state.copyWith(status: CallState.ended);
+
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (mounted) {
+        state = state.copyWith(status: CallState.idle, clearActiveCall: true);
+        _isEndingCall = false;
+      }
+    });
   }
 
   void toggleMute() {
     _rtcService.toggleMute();
+    state = state.copyWith(isMuted: _rtcService.isMuted);
   }
 
   Future<void> toggleSpeaker() async {
@@ -444,8 +545,8 @@ class CallManagerNotifier extends StateNotifier<CallStateData> {
     state = state.copyWith(isSpeakerOn: _rtcService.isSpeakerOn);
   }
 
-  void toggleVideo() {
-    _rtcService.toggleVideo();
+  Future<void> toggleVideo() async {
+    await _rtcService.toggleVideo();
     _webrtc.toggleVideo();
     if (!mounted) return;
     state = state.copyWith(isVideoOff: _rtcService.isVideoOff);

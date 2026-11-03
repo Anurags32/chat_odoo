@@ -128,23 +128,29 @@ class CallModel {
   }
 
   CallModel copyWith({
+    int? id,
+    CallType? callType,
     CallState? state,
     DateTime? answerTime,
     DateTime? endTime,
     int? duration,
     String? durationFormatted,
     String? endReason,
+    CallParticipant? caller,
+    CallParticipant? callee,
   }) {
     return CallModel(
-      id: id,
-      callType: callType,
+      id: id ?? this.id,
+      callType: callType ?? this.callType,
       state: state ?? this.state,
       startTime: startTime,
       answerTime: answerTime ?? this.answerTime,
       endTime: endTime ?? this.endTime,
       duration: duration ?? this.duration,
-      caller: caller,
-      callee: callee,
+      durationFormatted: durationFormatted ?? this.durationFormatted,
+      endReason: endReason ?? this.endReason,
+      caller: caller ?? this.caller,
+      callee: callee ?? this.callee,
     );
   }
 

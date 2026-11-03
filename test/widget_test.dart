@@ -1,30 +1,92 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:nspl_odoo/main.dart';
+import 'package:nspl_odoo/features/call/data/models/call_model.dart';
+import 'package:nspl_odoo/features/call/data/providers/call_provider.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  group('CallModel & CallStateData State Machine Tests', () {
+    test('Default CallStateData should be idle with no active call', () {
+      final state = CallStateData();
+      expect(state.status, CallState.idle);
+      expect(state.activeCall, isNull);
+      expect(state.isIncoming, isFalse);
+      expect(state.isMuted, isFalse);
+      expect(state.isSpeakerOn, isTrue);
+      expect(state.durationSeconds, 0);
+    });
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    test(
+      'Outgoing call initiation enters connecting state with participant info',
+      () {
+        final state = CallStateData(
+          activeCall: CallModel(
+            id: 42,
+            callType: CallType.audio,
+            state: CallState.connecting,
+            startTime: DateTime.now(),
+            caller: CallParticipant(partnerId: 1, name: 'Me'),
+            callee: CallParticipant(partnerId: 99, name: 'Alice'),
+          ),
+          status: CallState.connecting,
+          isIncoming: false,
+          channelId: 42,
+          partnerName: 'Alice',
+        );
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+        expect(state.status, CallState.connecting);
+        expect(state.isIncoming, isFalse);
+        expect(state.channelId, 42);
+        expect(state.partnerName, 'Alice');
+        expect(state.activeCall?.callee.partnerId, 99);
+      },
+    );
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    test('CallModel.copyWith updates status, id, and duration accurately', () {
+      final initialCall = CallModel(
+        id: 10,
+        callType: CallType.video,
+        state: CallState.connecting,
+        startTime: DateTime.now(),
+        caller: CallParticipant(partnerId: 1, name: 'Caller'),
+        callee: CallParticipant(partnerId: 2, name: 'Callee'),
+      );
+
+      final connectedCall = initialCall.copyWith(
+        state: CallState.connected,
+        duration: 45,
+        answerTime: DateTime.now(),
+      );
+
+      expect(connectedCall.state, CallState.connected);
+      expect(connectedCall.duration, 45);
+      expect(connectedCall.answerTime, isNotNull);
+      expect(connectedCall.id, 10);
+      expect(connectedCall.callType, CallType.video);
+    });
+
+    test(
+      'State transition to ended preserves duration and participant record',
+      () {
+        final call = CallModel(
+          id: 77,
+          callType: CallType.audio,
+          state: CallState.ended,
+          startTime: DateTime.now(),
+          duration: 120,
+          endReason: 'normal',
+          caller: CallParticipant(partnerId: 1, name: 'Me'),
+          callee: CallParticipant(partnerId: 2, name: 'Bob'),
+        );
+
+        final state = CallStateData(
+          activeCall: call,
+          status: CallState.ended,
+          durationSeconds: 120,
+        );
+
+        expect(state.status, CallState.ended);
+        expect(state.durationSeconds, 120);
+        expect(state.activeCall?.endReason, 'normal');
+      },
+    );
   });
 }

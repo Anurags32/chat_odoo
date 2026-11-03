@@ -15,7 +15,9 @@ class IncomingCallDialog extends ConsumerWidget {
     final callManager = ref.read(callManagerProvider.notifier);
     final call = callState.activeCall;
 
-    if (!callState.isIncoming || callState.status != CallState.ringing || call == null) {
+    if (!callState.isIncoming ||
+        callState.status != CallState.ringing ||
+        call == null) {
       return const SizedBox.shrink();
     }
 
@@ -30,9 +32,7 @@ class IncomingCallDialog extends ConsumerWidget {
           Positioned.fill(
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: Container(
-                color: Colors.black.withValues(alpha: 0.55),
-              ),
+              child: Container(color: Colors.black.withValues(alpha: 0.55)),
             ),
           ),
 
@@ -45,10 +45,7 @@ class IncomingCallDialog extends ConsumerWidget {
                 gradient: const LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [
-                    Color(0xFF1E293B),
-                    Color(0xFF0F172A),
-                  ],
+                  colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
                 ),
                 borderRadius: BorderRadius.circular(28),
                 border: Border.all(
@@ -87,7 +84,9 @@ class IncomingCallDialog extends ConsumerWidget {
                     ),
                     child: Center(
                       child: Text(
-                        callerName.isNotEmpty ? callerName[0].toUpperCase() : '?',
+                        callerName.isNotEmpty
+                            ? callerName[0].toUpperCase()
+                            : '?',
                         style: const TextStyle(
                           fontSize: 38,
                           fontWeight: FontWeight.bold,
@@ -113,7 +112,10 @@ class IncomingCallDialog extends ConsumerWidget {
 
                   // Call Type Badge
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 5,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(16),
@@ -128,7 +130,9 @@ class IncomingCallDialog extends ConsumerWidget {
                         ),
                         const SizedBox(width: 6),
                         Text(
-                          isVideo ? 'Incoming Video Call...' : 'Incoming Audio Call...',
+                          isVideo
+                              ? 'Incoming Video Call...'
+                              : 'Incoming Audio Call...',
                           style: const TextStyle(
                             color: Colors.white70,
                             fontSize: 13,
@@ -153,7 +157,9 @@ class IncomingCallDialog extends ConsumerWidget {
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.redAccent.withValues(alpha: 0.4),
+                                  color: Colors.redAccent.withValues(
+                                    alpha: 0.4,
+                                  ),
                                   blurRadius: 16,
                                   spreadRadius: 1,
                                 ),
@@ -167,8 +173,11 @@ class IncomingCallDialog extends ConsumerWidget {
                                 customBorder: const CircleBorder(),
                                 child: const Padding(
                                   padding: EdgeInsets.all(16),
-                                  child: Icon(Icons.call_end_rounded,
-                                      color: Colors.white, size: 30),
+                                  child: Icon(
+                                    Icons.call_end_rounded,
+                                    color: Colors.white,
+                                    size: 30,
+                                  ),
                                 ),
                               ),
                             ),
@@ -194,7 +203,9 @@ class IncomingCallDialog extends ConsumerWidget {
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.greenAccent.withValues(alpha: 0.4),
+                                  color: Colors.greenAccent.withValues(
+                                    alpha: 0.4,
+                                  ),
                                   blurRadius: 16,
                                   spreadRadius: 1,
                                 ),
@@ -205,12 +216,17 @@ class IncomingCallDialog extends ConsumerWidget {
                               shape: const CircleBorder(),
                               child: InkWell(
                                 onTap: () async {
-                                  final success = await callManager.acceptCall();
+                                  final success = await callManager
+                                      .acceptCall();
                                   if (success && context.mounted) {
+                                    final extra = {
+                                      'channel_id': call.id,
+                                      'callee_name': callerName,
+                                    };
                                     if (isVideo) {
-                                      context.push('/video-call');
+                                      context.push('/video-call', extra: extra);
                                     } else {
-                                      context.push('/audio-call');
+                                      context.push('/audio-call', extra: extra);
                                     }
                                   }
                                 },

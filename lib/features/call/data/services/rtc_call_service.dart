@@ -131,9 +131,9 @@ class RtcCallService extends ChangeNotifier {
       tag: 'CALL',
     );
 
-    // If already in a previous call, clean up first
+    // If already in a previous call, clean up first without setting status=ended
     if (_status != CallStatus.idle) {
-      await hangUp(remoteInitiated: false, notifyRemote: false);
+      await _cleanupResources();
     }
 
     _channelId = channelId;
@@ -1136,13 +1136,16 @@ class RtcCallService extends ChangeNotifier {
       hangUp(remoteInitiated: true);
       return;
     }
-    _removePeer(sessionId);
-    if (_peers.isEmpty && _status == CallStatus.connected) {
-      RtcLogger.instance.log(
-        'All remote participants left the call.',
-        tag: 'CALL',
-      );
-      hangUp(remoteInitiated: true);
+    // Only act if this session is an active peer in our call mesh
+    if (_peers.containsKey(sessionId)) {
+      _removePeer(sessionId);
+      if (_peers.isEmpty && _status == CallStatus.connected) {
+        RtcLogger.instance.log(
+          'Active remote participant ($sessionId) left the call. Hanging up...',
+          tag: 'CALL',
+        );
+        hangUp(remoteInitiated: true);
+      }
     }
   }
 
@@ -1513,6 +1516,38 @@ class RtcCallService extends ChangeNotifier {
     }
 
     // Dispose all peer connections safely without concurrent modification
+    await _cleanupResources();
+
+    _status = CallStatus.ended;
+    _selfSessionId = null;
+    _isScreenSharing = false;
+    _isJoining = false;
+
+    RtcLogger.instance.log(
+      'Call terminated and all resources disposed.',
+      tag: 'CALL',
+    );
+    notifyListeners();
+
+    // Reset to idle after 1500ms so new incoming/outgoing calls start with clean state
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (_status == CallStatus.ended || _status == CallStatus.failed) {
+        resetToIdle();
+      }
+    });
+  }
+
+  /// Internal cleanup of peers and media tracks without mutating CallStatus
+  Future<void> _cleanupResources() async {
+    _durationTimer?.cancel();
+    _durationTimer = null;
+    _diagnosisTimer?.cancel();
+    _diagnosisTimer = null;
+    _pingTimer?.cancel();
+    _pingTimer = null;
+    _statsTimer?.cancel();
+    _statsTimer = null;
+
     final peersToDispose = _peers.values.toList();
     _peers.clear();
     for (final peer in peersToDispose) {
@@ -1521,12 +1556,12 @@ class RtcCallService extends ChangeNotifier {
       } catch (_) {}
     }
 
-    // Detach local renderers and tracks
     if (_localRendererInitialized) {
       try {
         localRenderer.srcObject = null;
       } catch (_) {}
     }
+
     if (_localStream != null) {
       for (final t in _localStream!.getTracks()) {
         try {
@@ -1551,22 +1586,29 @@ class RtcCallService extends ChangeNotifier {
       _localScreenStream = null;
     }
 
-    // Leave call on Odoo server
     if (_channelId != 0) {
-      await _odooApi.leaveCall(channelId: _channelId);
+      try {
+        await _odooApi.leaveCall(channelId: _channelId);
+      } catch (_) {}
     }
 
-    await _signalingService.disconnect();
+    try {
+      await _signalingService.disconnect();
+    } catch (_) {}
+  }
 
-    _status = CallStatus.ended;
+  /// Reset CallService to clean idle state
+  void resetToIdle() {
+    _status = CallStatus.idle;
+    _channelId = 0;
     _selfSessionId = null;
+    _callDuration = 0;
+    _isVideo = false;
+    _isVideoOff = false;
+    _isMuted = false;
+    _isSpeakerOn = true;
     _isScreenSharing = false;
     _isJoining = false;
-
-    RtcLogger.instance.log(
-      'Call terminated and all resources disposed.',
-      tag: 'CALL',
-    );
     notifyListeners();
   }
 
